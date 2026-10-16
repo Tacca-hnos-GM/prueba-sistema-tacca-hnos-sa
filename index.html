@@ -5,15 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sistema de Gestión — Tacca Hnos.</title>
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAXHD-x9-dpgiv44GNDt5_8UkQiQ5nL_Ik",
-  authDomain: "prueba-sistema-tacca-hnos.firebaseapp.com",
-  databaseURL: "https://prueba-sistema-tacca-hnos-default-rtdb.firebaseio.com",
-  projectId: "prueba-sistema-tacca-hnos",
-  storageBucket: "prueba-sistema-tacca-hnos.firebasestorage.app",
-  messagingSenderId: "917274597548",
-  appId: "1:917274597548:web:732b9539ea0a9bfbdca709"
-};
+<!-- ===== Conexión a Firebase (base de datos compartida) =====
+     Si en algún momento cambiás de proyecto de Firebase, actualizá
+     únicamente el objeto firebaseConfig más abajo con los datos
+     nuevos (Configuración del proyecto → Tus apps → apiKey, etc.) -->
 <script>
   window.storageReady = new Promise((resolve) => { window._resolveStorageReady = resolve; });
 </script>
@@ -58,19 +53,14 @@ const firebaseConfig = {
 
       // >>> PEGAR ACÁ la configuración de tu proyecto de Firebase (Configuración del proyecto > Tus apps > Config). <<<
       const firebaseConfig = {
-        apiKey: "PEGAR_API_KEY",
-        authDomain: "PEGAR_AUTH_DOMAIN",
-        databaseURL: "PEGAR_DATABASE_URL",
-        projectId: "PEGAR_PROJECT_ID",
-        storageBucket: "PEGAR_STORAGE_BUCKET",
-        messagingSenderId: "PEGAR_SENDER_ID",
-        appId: "PEGAR_APP_ID"
+        apiKey: "AIzaSyAXHD-x9-dpgiv44GNDt5_8UkQiQ5nL_Ik",
+        authDomain: "prueba-sistema-tacca-hnos.firebaseapp.com",
+        databaseURL: "https://prueba-sistema-tacca-hnos-default-rtdb.firebaseio.com",
+        projectId: "prueba-sistema-tacca-hnos",
+        storageBucket: "prueba-sistema-tacca-hnos.firebasestorage.app",
+        messagingSenderId: "917274597548",
+        appId: "1:917274597548:web:732b9539ea0a9bfbdca709"
       };
-      if (String(firebaseConfig.apiKey).indexOf('PEGAR') === 0) {
-        msg('Falta pegar la configuración de Firebase dentro del archivo (ver instrucciones).', 'error');
-        return;
-      }
-
       // Los datos del sistema nuevo viven en 'v2/data/...', separados de la app actual ('data/...').
       const RAIZ_DATOS = 'v2/data/';
       function claveSegura(key) {
