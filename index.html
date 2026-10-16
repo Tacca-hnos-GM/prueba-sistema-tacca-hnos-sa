@@ -17,13 +17,13 @@
      Esta tabla es la única fuente de verdad: define qué pestañas ve cada perfil y a qué datos
      puede acceder. Las reglas de Firebase (archivo firebase_reglas_v2.json) se generan desde esta misma tabla. */
   window.PERMISOS_ROLES = {
-    admin: {nombre: 'Administrador', tabs: ['ventas','pedidos','remitos','facturas','stock','flujocaja','calendario','deudores','bitacoraventas','clientes','productos','revision'], leer: '*', escribir: '*', backup: true},
+    admin: {nombre: 'Administrador', tabs: ['ventas','pedidos','remitos','facturas','stock','flujocaja','calendario','deudores','resumenes','bitacoraventas','clientes','productos','revision'], leer: '*', escribir: '*', backup: true},
     ventas: {nombre: 'Ventas', tabs: ['pedidos','remitos','facturas','stock','clientes','productos'],
       leer: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos','facturas','config_facturas'],
       escribir: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos','facturas','config_facturas']},
-    tesoreria: {nombre: 'Tesorería', tabs: ['ventas','flujocaja','calendario','deudores','clientes'],
-      leer: ['ventas','clientes','productos','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones','remitos','facturas'],
-      escribir: ['ventas','clientes','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones']}
+    tesoreria: {nombre: 'Tesorería', tabs: ['ventas','flujocaja','calendario','deudores','resumenes','clientes'],
+      leer: ['ventas','clientes','productos','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones','remitos','facturas','config_facturas'],
+      escribir: ['ventas','clientes','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones','remitos']}
   };
   window.claveBasePermiso = function (key) {
     return String(key).indexOf('aviso_fecha_') === 0 ? 'aviso_fecha' : String(key);
@@ -1979,6 +1979,7 @@
       <span class="tab" data-tab="flujocaja">💰 Flujo de Caja</span>
       <span class="tab" data-tab="calendario">Calendario</span>
       <span class="tab" data-tab="deudores">Bitácora de deudores</span>
+      <span class="tab" data-tab="resumenes">📑 Resúmenes de cuenta</span>
       <span class="tab" data-tab="bitacoraventas">Bitácora de ventas</span>
       <span class="tab" data-tab="clientes">Clientes</span>
       <span class="tab" data-tab="productos">Productos</span>
@@ -2676,6 +2677,27 @@
     <div id="deudoresList" style="margin-top:1.25rem;"></div>
   </div>
 
+  <div id="viewResumenes" style="display:none;">
+    <div class="toolbar">
+      <input type="text" id="resBuscador" list="listaClientes" placeholder="Buscar cliente para ver su resumen de cuenta...">
+      <button class="ghost" id="resVolver" style="display:none;">← Todos los clientes</button>
+    </div>
+    <div id="resContenido"></div>
+    <div class="formpanel" id="cobroC2Panel">
+      <h2>Registrar cobro — remitos de cuenta 2</h2>
+      <div class="formgrid">
+        <div class="field full"><label>Remito</label><select id="cc2_remito"></select></div>
+        <div class="field"><label>Monto cobrado ($)</label><input type="number" id="cc2_monto" min="0" step="0.01"></div>
+        <div class="field"><label>Fecha</label><input type="date" id="cc2_fecha"></div>
+        <div class="field full"><label>Nota (opcional)</label><input type="text" id="cc2_nota" placeholder="Ej: transferencia, efectivo, cheque N°..."></div>
+      </div>
+      <div class="formactions">
+        <button class="ghost" id="btnCc2Cancelar">Cancelar</button>
+        <button class="primary" id="btnCc2Guardar">Registrar cobro</button>
+      </div>
+    </div>
+  </div>
+
   <div id="viewClientes" style="display:none;">
     <div class="toolbar">
       <button class="primary" id="btnNuevoCliente">+ Nuevo cliente</button>
@@ -2726,6 +2748,10 @@
             <option value="Contado">Contado</option>
             <option value="Cuenta corriente">Cuenta corriente</option>
           </select>
+        </div>
+        <div class="field">
+          <label>Plazo de pago (días)</label>
+          <input type="number" id="c_dias_pago" min="0" step="1" placeholder="Ej: 30">
         </div>
         <div class="field">
           <label>Método de pago habitual</label>
@@ -4372,6 +4398,7 @@ function refreshTodasLasVistas() {
   if ($('viewPedidos').style.display !== 'none') renderPedidos();
   if ($('viewRemitos').style.display !== 'none') renderRemitos();
   if ($('viewFacturas').style.display !== 'none') renderFacturas();
+  if ($('viewResumenes').style.display !== 'none') renderResumenes();
   if ($('viewFlujoCaja').style.display !== 'none') renderFlujoCaja();
   renderHeaderResumen();
 }
@@ -5018,6 +5045,7 @@ $('tabs').addEventListener('click', (e) => {
   $('viewStock').style.display = tab === 'stock' ? '' : 'none';
   $('viewRemitos').style.display = tab === 'remitos' ? '' : 'none';
   $('viewFacturas').style.display = tab === 'facturas' ? '' : 'none';
+  $('viewResumenes').style.display = tab === 'resumenes' ? '' : 'none';
   $('viewFlujoCaja').style.display = tab === 'flujocaja' ? '' : 'none';
   if (tab === 'revision') renderRevision();
   if (tab === 'calendario') renderCalendario();
@@ -5029,6 +5057,7 @@ $('tabs').addEventListener('click', (e) => {
   if (tab === 'stock') renderStock();
   if (tab === 'remitos') renderRemitos();
   if (tab === 'facturas') renderFacturas();
+  if (tab === 'resumenes') renderResumenes();
   if (tab === 'flujocaja') renderFlujoCaja();
 });
 
@@ -5672,6 +5701,7 @@ function deudorClienteGroupHTML(grupo, idx, mapMorosidad) {
           <span class="deudor-cliente-arrow">${abierto ? '▾' : '▸'}</span>
           <span class="cliente">${escapeHtml(grupo.nombre)}</span>
           ${esReincidente ? '<span class="badge vencido" style="font-size:10.5px;">⚠️ reincidente</span>' : ''}
+          <button class="iconbtn" onclick="event.stopPropagation();irAResumenDe(deudoresClientesActuales[${idx}].nombre)">📑 Resumen de cuenta</button>
         </div>
         <div class="deudor-cliente-resumen">
           <span class="badge vencido">${grupo.facturas.length} factura${grupo.facturas.length===1?'':'s'} vencida${grupo.facturas.length===1?'':'s'}</span>
@@ -7191,7 +7221,7 @@ function completarClienteFactura() {
   if (tipoFormFactura() !== 'NC') {
     const cond = c.condicion_habitual === 'Contado' ? 'Contado' : (facturasConfig.cond_venta || '');
     $('fac_cond').value = cond;
-    $('fac_dias').value = c.condicion_habitual === 'Contado' ? 0 : (facturasConfig.dias != null ? facturasConfig.dias : 30);
+    $('fac_dias').value = c.condicion_habitual === 'Contado' ? 0 : (c.dias_pago != null ? c.dias_pago : (facturasConfig.dias != null ? facturasConfig.dias : 30));
     recalcularVencimientoForm();
   }
 }
@@ -7675,6 +7705,300 @@ $('fc_logo_file').addEventListener('change', (e) => {
   };
   reader.readAsDataURL(file);
 });
+
+
+// ===================== RESÚMENES DE CUENTA =====================
+// Cuenta corriente por cliente: facturas y notas (cuenta 1), remitos de cuenta 2 y todos los cobros.
+// No guarda datos propios: se calcula de facturas + ventas + remitos. Los cobros de cuenta 2 se guardan en el remito (pagos).
+
+let resClienteSel = null;
+let resDesde = '';
+let resHasta = '';
+
+function mismoCliente(a, b) { return (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase(); }
+
+function importeRemito(r) {
+  let total = 0, sinPrecio = false;
+  (r.items || []).forEach(it => {
+    if (it.precio == null || it.precio === '') sinPrecio = true;
+    else total += (Number(it.cantidad) || 0) * Number(it.precio);
+  });
+  return {total: r2(total), sinPrecio};
+}
+
+function movimientosCuenta(nombre) {
+  const mov = [];
+  const ventasCli = ventas.filter(v => mismoCliente(v.cliente, nombre));
+  const idsVentaFactura = new Set();
+  facturas.filter(f => f.estado === 'emitida' && mismoCliente(f.cliente, nombre)).forEach(f => {
+    const nom = TIPOS_COMPROBANTE[f.tipo].abrev;
+    const eti = `${nom} ${f.pv}-${String(f.numero).padStart(8, '0')}`;
+    if (f.tipo === 'NC') mov.push({fecha: f.fecha, orden: 2, tipo: 'NC', cuenta: 1, desc: eti + (f.asociada ? ` (s/ Fact. ${f.asociada.pv}-${String(f.asociada.numero).padStart(8, '0')})` : ''), debe: 0, haber: f.total});
+    else { mov.push({fecha: f.fecha, orden: 1, tipo: f.tipo, cuenta: 1, desc: eti + (f.remitos_txt ? ' · Rem. ' + f.remitos_txt : ''), venc: f.vencimiento, debe: f.total, haber: 0}); idsVentaFactura.add(f.venta_id); }
+  });
+  ventasCli.forEach(v => {
+    if (!v.factura_id) mov.push({fecha: v.fecha_venta, orden: 1, tipo: 'VTA', cuenta: 1, desc: 'Fact. ' + v.factura, venc: v.fecha_vencimiento, debe: Number(v.monto) || 0, haber: 0});
+    let cobrado = 0;
+    (v.pagos || []).forEach(p => {
+      cobrado += Number(p.monto) || 0;
+      mov.push({fecha: p.fecha, orden: 3, tipo: 'COBRO', cuenta: 1, desc: 'Cobro — ' + (v.factura_id ? v.factura : 'Fact. ' + v.factura) + (p.nota ? ' (' + p.nota + ')' : ''), debe: 0, haber: Number(p.monto) || 0});
+    });
+    if (v.estado === 'pagado' && cobrado < Number(v.monto) - 0.01) {
+      mov.push({fecha: v.fecha_pago || v.fecha_venta, orden: 3, tipo: 'COBRO', cuenta: 1, desc: 'Cobro — ' + (v.factura_id ? v.factura : 'Fact. ' + v.factura) + ' (marcada como pagada)', debe: 0, haber: r2(Number(v.monto) - cobrado)});
+    }
+  });
+  remitos.filter(r => Number(r.cuenta) === 2 && r.estado !== 'anulado' && mismoCliente(r.cliente, nombre)).forEach(r => {
+    const im = importeRemito(r);
+    mov.push({fecha: r.fecha, orden: 1, tipo: 'REM2', cuenta: 2, desc: 'Remito ' + formatNumeroRemito(r) + ' (cuenta 2)' + (im.sinPrecio ? ' · hay productos sin precio' : ''), debe: im.total, haber: 0, remito_id: r.id});
+    (r.pagos || []).forEach(p => mov.push({fecha: p.fecha, orden: 3, tipo: 'COBRO2', cuenta: 2, desc: 'Cobro — Remito ' + formatNumeroRemito(r) + (p.nota ? ' (' + p.nota + ')' : ''), debe: 0, haber: Number(p.monto) || 0, remito_id: r.id, pago_id: p.id}));
+  });
+  mov.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '') || a.orden - b.orden);
+  return mov;
+}
+
+function resumenCuenta(nombre, desde, hasta) {
+  const todos = movimientosCuenta(nombre);
+  let saldoIni = 0;
+  const filas = [];
+  let saldo = 0;
+  todos.forEach(m => {
+    const antes = desde && (m.fecha || '') < desde;
+    const despues = hasta && (m.fecha || '') > hasta;
+    saldo = r2(saldo + m.debe - m.haber);
+    if (antes) { saldoIni = saldo; return; }
+    if (despues) return;
+    filas.push(Object.assign({}, m, {saldo}));
+  });
+  const totDebe = r2(filas.reduce((s, m) => s + m.debe, 0)), totHaber = r2(filas.reduce((s, m) => s + m.haber, 0));
+  const saldoFin = filas.length ? filas[filas.length - 1].saldo : saldoIni;
+  const c1 = r2(todos.filter(m => m.cuenta === 1).reduce((s, m) => s + m.debe - m.haber, 0));
+  const c2 = r2(todos.filter(m => m.cuenta === 2).reduce((s, m) => s + m.debe - m.haber, 0));
+  const vencido = r2(ventas.filter(v => mismoCliente(v.cliente, nombre) && v.estado !== 'pagado' && diasHasta(v.fecha_vencimiento) < 0)
+    .reduce((s, v) => s + saldoPendiente(v), 0));
+  const cli = clientePorNombre(nombre);
+  return {filas, saldoIni, totDebe, totHaber, saldoFin, c1, c2, total: r2(c1 + c2), vencido, saldoFavor: cli ? Number(cli.saldo_favor) || 0 : 0};
+}
+
+function nombresConMovimientos() {
+  const n = new Map();
+  const add = (x) => { const k = (x || '').trim().toLowerCase(); if (k && !n.has(k)) n.set(k, x.trim()); };
+  facturas.filter(f => f.estado === 'emitida').forEach(f => add(f.cliente));
+  ventas.forEach(v => add(v.cliente));
+  remitos.filter(r => Number(r.cuenta) === 2 && r.estado !== 'anulado').forEach(r => add(r.cliente));
+  return Array.from(n.values());
+}
+
+function renderResumenes() {
+  $('resVolver').style.display = resClienteSel ? '' : 'none';
+  if (!resClienteSel) return renderResumenesGeneral();
+  const R = resumenCuenta(resClienteSel, resDesde, resHasta);
+  const cli = clientePorNombre(resClienteSel);
+  const c2pend = remitos.filter(r => Number(r.cuenta) === 2 && r.estado !== 'anulado' && mismoCliente(r.cliente, resClienteSel) && saldoRemito(r) > 0.005);
+  $('resContenido').innerHTML = `
+    <div class="chart-card">
+      <div class="chart-title">${escapeHtml(resClienteSel)}${cli && cli.cuit ? ` <span style="font-weight:400;font-size:13px;color:var(--text-muted);">· CUIT ${escapeHtml(cli.cuit)}</span>` : ''}</div>
+      <div class="stats">
+        <div class="stat ${R.total > 0.005 ? 'orange' : ''}"><div class="label">Saldo total</div><div class="value">${formatMonto(R.total)}</div><div class="sub">cuenta 1 ${formatMonto(R.c1)} · cuenta 2 ${formatMonto(R.c2)}</div></div>
+        <div class="stat ${R.vencido > 0 ? 'orange' : ''}"><div class="label">Vencido</div><div class="value">${formatMonto(R.vencido)}</div><div class="sub">facturas con fecha vencida</div></div>
+        ${R.saldoFavor > 0 ? `<div class="stat"><div class="label">Saldo a favor</div><div class="value">${formatMonto(R.saldoFavor)}</div><div class="sub">registrado en su ficha</div></div>` : ''}
+      </div>
+      <div class="toolbar" style="margin-top:12px;">
+        <label style="font-size:12.5px;">Desde <input type="date" id="resDesde" value="${resDesde}"></label>
+        <label style="font-size:12.5px;">Hasta <input type="date" id="resHasta" value="${resHasta}"></label>
+        <button class="ghost" onclick="resLimpiarFechas()">Todo el historial</button>
+        <button class="primary" onclick="descargarPdfResumen()">📄 Descargar PDF</button>
+        <button class="ghost" onclick="abrirCobroC2()" ${c2pend.length ? '' : 'disabled title="No hay remitos de cuenta 2 con saldo"'}>+ Cobro cuenta 2</button>
+      </div>
+      <table class="client-table" style="margin-top:8px;">
+        <thead><tr><th>Fecha</th><th>Comprobante</th><th>Vence</th><th class="num">Debe</th><th class="num">Haber</th><th class="num">Saldo</th><th></th></tr></thead>
+        <tbody>
+          ${R.saldoIni ? `<tr><td colspan="5"><i>Saldo anterior al ${formatFecha(resDesde)}</i></td><td class="num"><b>${formatMonto(R.saldoIni)}</b></td><td></td></tr>` : ''}
+          ${R.filas.length ? R.filas.map(m => `<tr>
+            <td>${formatFecha(m.fecha)}</td><td>${m.cuenta === 2 ? '<span class="badge porvencer" style="font-size:10px;">C2</span> ' : ''}${escapeHtml(m.desc)}</td>
+            <td>${m.venc ? formatFecha(m.venc) : ''}</td>
+            <td class="num">${m.debe ? formatMonto(m.debe) : ''}</td><td class="num">${m.haber ? formatMonto(m.haber) : ''}</td><td class="num"><b>${formatMonto(m.saldo)}</b></td>
+            <td>${m.tipo === 'COBRO2' ? `<button class="iconbtn danger" onclick="quitarCobroC2('${m.remito_id}','${m.pago_id}')" title="Quitar este cobro">✕</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">Sin movimientos en el período.</td></tr>'}
+        </tbody>
+        <tfoot><tr><td colspan="3"><b>Totales del período</b></td><td class="num"><b>${formatMonto(R.totDebe)}</b></td><td class="num"><b>${formatMonto(R.totHaber)}</b></td><td class="num"><b>${formatMonto(R.saldoFin)}</b></td><td></td></tr></tfoot>
+      </table>
+      <p style="font-size:12px;color:var(--text-muted);margin:8px 0 0;">Los cobros de facturas se cargan en Ventas (Registrar pago). Los de cuenta 2 se cargan con “+ Cobro cuenta 2”. Las gestiones de cobro siguen en la pestaña Bitácora de deudores.</p>
+    </div>`;
+  $('resDesde').addEventListener('change', (e) => { resDesde = e.target.value; renderResumenes(); });
+  $('resHasta').addEventListener('change', (e) => { resHasta = e.target.value; renderResumenes(); });
+}
+
+function renderResumenesGeneral() {
+  const q = ($('resBuscador').value || '').trim().toLowerCase();
+  let filas = nombresConMovimientos().map(n => Object.assign({nombre: n}, resumenCuenta(n)));
+  filas = filas.filter(f => Math.abs(f.total) > 0.005 || f.vencido > 0);
+  if (q) filas = filas.filter(f => f.nombre.toLowerCase().includes(q));
+  filas.sort((a, b) => b.total - a.total);
+  const tot = r2(filas.reduce((s, f) => s + f.total, 0)), venc = r2(filas.reduce((s, f) => s + f.vencido, 0));
+  $('resContenido').innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="label">Clientes con saldo</div><div class="value">${filas.filter(f => f.total > 0.005).length}</div></div>
+      <div class="stat orange"><div class="label">A cobrar (cuentas 1 y 2)</div><div class="value">${formatMonto(tot)}</div></div>
+      <div class="stat orange"><div class="label">Vencido</div><div class="value">${formatMonto(venc)}</div></div>
+    </div>
+    <div class="chart-card" style="margin-top:12px;">
+      <div class="chart-title">Saldos por cliente</div>
+      ${filas.length ? `<table class="client-table"><thead><tr><th>Cliente</th><th class="num">Cuenta 1</th><th class="num">Cuenta 2</th><th class="num">Total</th><th class="num">Vencido</th><th></th></tr></thead><tbody>
+        ${filas.map((f, i) => `<tr><td>${escapeHtml(f.nombre)}</td><td class="num">${formatMonto(f.c1)}</td><td class="num">${formatMonto(f.c2)}</td><td class="num"><b>${formatMonto(f.total)}</b></td><td class="num">${f.vencido ? formatMonto(f.vencido) : ''}</td><td><button class="iconbtn" onclick="abrirResumenCliente(${i})">Ver resumen</button></td></tr>`).join('')}
+      </tbody></table>` : '<div class="empty"><h3>No hay saldos pendientes</h3><p>Buscá un cliente arriba para ver igualmente su historial.</p></div>'}
+    </div>`;
+  window._resFilas = filas;
+}
+
+function abrirResumenCliente(i) { resClienteSel = window._resFilas[i].nombre; renderResumenes(); }
+function irAResumenDe(nombre) {
+  resClienteSel = nombre; resDesde = ''; resHasta = '';
+  const t = document.querySelector('#tabs .tab[data-tab="resumenes"]');
+  if (t && !t.classList.contains('oculto')) t.click();
+}
+function resLimpiarFechas() { resDesde = ''; resHasta = ''; renderResumenes(); }
+
+function saldoRemito(r) {
+  const pagado = (r.pagos || []).reduce((s, p) => s + (Number(p.monto) || 0), 0);
+  return r2(importeRemito(r).total - pagado);
+}
+
+// ---------- Cobros de cuenta 2 ----------
+function abrirCobroC2() {
+  const lista = remitos.filter(r => Number(r.cuenta) === 2 && r.estado !== 'anulado' && mismoCliente(r.cliente, resClienteSel) && saldoRemito(r) > 0.005)
+    .sort((a, b) => Number(a.numero) - Number(b.numero));
+  if (!lista.length) return;
+  $('cc2_remito').innerHTML = lista.map(r => `<option value="${r.id}">Remito ${escapeHtml(formatNumeroRemito(r))} — ${formatFecha(r.fecha)} — saldo ${formatMonto(saldoRemito(r))}</option>`).join('');
+  $('cc2_fecha').value = toISODate(new Date());
+  $('cc2_nota').value = '';
+  cambioRemitoC2();
+  $('cobroC2Panel').classList.add('open');
+  $('cobroC2Panel').scrollIntoView({behavior: 'smooth'});
+}
+function cambioRemitoC2() {
+  const r = remitos.find(x => x.id === $('cc2_remito').value);
+  $('cc2_monto').value = r ? saldoRemito(r) : '';
+}
+async function guardarCobroC2() {
+  const r = remitos.find(x => x.id === $('cc2_remito').value);
+  const monto = parseFloat($('cc2_monto').value), fecha = $('cc2_fecha').value;
+  if (!r) { mostrarAviso('Elegí el remito.', 'error'); return; }
+  if (!(monto > 0) || !fecha) { mostrarAviso('Completá el monto y la fecha.', 'error'); return; }
+  if (monto > saldoRemito(r) + 0.01) { mostrarAviso('El monto supera el saldo del remito (' + formatMonto(saldoRemito(r)) + ').', 'error'); return; }
+  const pagos = (r.pagos || []).concat([{id: 'pg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5), monto: r2(monto), fecha, nota: ($('cc2_nota').value || '').trim(), por: (window.currentUser && window.currentUser.email) || ''}]);
+  try { await persistirRemito(Object.assign({}, r, {pagos, modificado_ts: Date.now()})); }
+  catch (e) { mostrarAviso('No se pudo guardar el cobro.', 'error'); return; }
+  $('cobroC2Panel').classList.remove('open');
+  refreshTodasLasVistas();
+  mostrarAviso('Cobro registrado.', null, true);
+}
+async function quitarCobroC2(remitoId, pagoId) {
+  const r = remitos.find(x => x.id === remitoId);
+  if (!r) return;
+  const ok = await confirmarAccion('¿Quitar este cobro del remito de cuenta 2?');
+  if (!ok) return;
+  try { await persistirRemito(Object.assign({}, r, {pagos: (r.pagos || []).filter(p => p.id !== pagoId), modificado_ts: Date.now()})); }
+  catch (e) { mostrarAviso('No se pudo quitar el cobro.', 'error'); return; }
+  refreshTodasLasVistas();
+}
+
+// ---------- PDF ----------
+function construirPdfResumen(nombre, R, cfg, desde, hasta) {
+  const lib = (window.jspdf && window.jspdf.jsPDF) || null;
+  if (!lib) throw new Error('No se pudo cargar el generador de PDF.');
+  const doc = new lib({unit: 'mm', format: 'a4'});
+  const cli = clientePorNombre(nombre) || {};
+  const X = {fecha: 12, desc: 32, venc: 118, debe: 150, haber: 172, saldo: 198};
+  let y;
+  const encabezado = (primera) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+    doc.text(cfg.razon || '', 12, 14);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+    doc.text([cfg.domicilio1, cfg.tel, 'CUIT ' + (cfg.cuit || '')].filter(Boolean).join('  ·  '), 12, 19);
+    if (cfg.logo) { try { doc.addImage(cfg.logo, cfg.logo.indexOf('image/jpeg') > -1 ? 'JPEG' : 'PNG', 172, 8, 26, 20, undefined, 'FAST'); } catch (e) { /* sin logo */ } }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+    doc.text('RESUMEN DE CUENTA', 12, 30);
+    doc.setFontSize(10);
+    doc.text(nombre, 12, 36);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+    const sub = [cli.cuit ? 'CUIT ' + cli.cuit : '', cli.domicilio || ''].filter(Boolean).join('  ·  ');
+    if (sub) doc.text(sub, 12, 40.5);
+    const per = (desde || hasta) ? `Período: ${desde ? formatFecha(desde) : 'inicio'} al ${hasta ? formatFecha(hasta) : 'hoy'}` : 'Historial completo';
+    doc.text(per + '  ·  Emitido el ' + formatFecha(toISODate(new Date())), 12, 45);
+    y = 51;
+    doc.setFillColor(225, 225, 225); doc.rect(12, y - 4, 186, 6, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+    doc.text('Fecha', X.fecha, y); doc.text('Comprobante', X.desc, y); doc.text('Vence', X.venc, y);
+    doc.text('Debe', X.debe, y, {align: 'right'}); doc.text('Haber', X.haber, y, {align: 'right'}); doc.text('Saldo', X.saldo, y, {align: 'right'});
+    doc.setFont('helvetica', 'normal'); y += 6;
+  };
+  encabezado(true);
+  const fila = (txt, vals, negrita) => {
+    if (y > 270) { doc.addPage(); encabezado(false); }
+    doc.setFont('helvetica', negrita ? 'bold' : 'normal'); doc.setFontSize(8.5);
+    vals.fecha && doc.text(vals.fecha, X.fecha, y);
+    const lines = doc.splitTextToSize(txt, 84);
+    doc.text(lines[0] || '', X.desc, y);
+    vals.venc && doc.text(vals.venc, X.venc, y);
+    vals.debe && doc.text(vals.debe, X.debe, y, {align: 'right'});
+    vals.haber && doc.text(vals.haber, X.haber, y, {align: 'right'});
+    vals.saldo != null && doc.text(vals.saldo, X.saldo, y, {align: 'right'});
+    y += 4.6;
+  };
+  if (R.saldoIni) fila('Saldo anterior', {fecha: '', saldo: fmtMoneda(R.saldoIni)}, true);
+  R.filas.forEach(m => fila((m.cuenta === 2 ? '[C2] ' : '') + m.desc, {fecha: formatFecha(m.fecha), venc: m.venc ? formatFecha(m.venc) : '', debe: m.debe ? fmtMoneda(m.debe) : '', haber: m.haber ? fmtMoneda(m.haber) : '', saldo: fmtMoneda(m.saldo)}));
+  if (!R.filas.length) fila('Sin movimientos en el período', {}, false);
+  if (y > 250) { doc.addPage(); encabezado(false); }
+  y += 2; doc.line(12, y, 198, y); y += 5;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+  doc.text('Totales del período', X.desc, y);
+  doc.text(fmtMoneda(R.totDebe), X.debe, y, {align: 'right'}); doc.text(fmtMoneda(R.totHaber), X.haber, y, {align: 'right'}); doc.text(fmtMoneda(R.saldoFin), X.saldo, y, {align: 'right'});
+  y += 8;
+  doc.setFontSize(10);
+  doc.text('SALDO ADEUDADO: $ ' + fmtMoneda(R.total), 12, y);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); y += 5;
+  doc.text(`Cuenta 1: $ ${fmtMoneda(R.c1)}   ·   Cuenta 2: $ ${fmtMoneda(R.c2)}${R.vencido ? '   ·   Vencido: $ ' + fmtMoneda(R.vencido) : ''}${R.saldoFavor ? '   ·   Saldo a favor: $ ' + fmtMoneda(R.saldoFavor) : ''}`, 12, y);
+  const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(120); doc.text(`Hoja ${i} de ${n}`, 198, 290, {align: 'right'}); doc.setTextColor(0); }
+  return doc;
+}
+
+function descargarPdfResumen() {
+  if (!resClienteSel) return;
+  try {
+    const R = resumenCuenta(resClienteSel, resDesde, resHasta);
+    construirPdfResumen(resClienteSel, R, facturasConfig || normalizarConfigFacturas(null), resDesde, resHasta)
+      .save('Resumen_de_cuenta_' + resClienteSel.replace(/[^\w]+/g, '_') + '_' + toISODate(new Date()) + '.pdf');
+  } catch (e) { mostrarAviso(e.message || 'No se pudo generar el PDF.', 'error'); }
+}
+
+$('resBuscador').addEventListener('input', (e) => {
+  const v = e.target.value.trim();
+  const exacto = nombresConMovimientos().concat(clientes.map(c => c.nombre)).find(n => mismoCliente(n, v));
+  if (exacto && v) { resClienteSel = exacto; resDesde = ''; resHasta = ''; }
+  else resClienteSel = null;
+  renderResumenes();
+});
+$('resVolver').addEventListener('click', () => { resClienteSel = null; $('resBuscador').value = ''; renderResumenes(); });
+$('cc2_remito').addEventListener('change', cambioRemitoC2);
+$('btnCc2Cancelar').addEventListener('click', () => $('cobroC2Panel').classList.remove('open'));
+$('btnCc2Guardar').addEventListener('click', guardarCobroC2);
+
+// ---------- CUIT ----------
+function cuitValido(txt) {
+  const d = String(txt || '').replace(/\D/g, '');
+  if (d.length !== 11) return false;
+  const pesos = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  let s = 0;
+  for (let i = 0; i < 10; i++) s += Number(d[i]) * pesos[i];
+  let dv = 11 - (s % 11);
+  if (dv === 11) dv = 0;
+  if (dv === 10) return false;
+  return dv === Number(d[10]);
+}
+function formatearCuit(txt) {
+  const d = String(txt || '').replace(/\D/g, '');
+  return d.length === 11 ? d.slice(0, 2) + '-' + d.slice(2, 10) + '-' + d.slice(10) : String(txt || '').trim();
+}
 
 // ===================== FLUJO DE CAJA =====================
 
@@ -9494,7 +9818,7 @@ function clienteCardHTML(c) {
           ${c.email ? `<span>${escapeHtml(c.email)}</span>` : ''}
         </div>
         ${c.notas ? `<div class="cliente-notas">📝 ${escapeHtml(c.notas)}</div>` : ''}
-        ${(c.condicion_habitual || c.metodo_habitual) ? `<div class="cliente-contacto">💳 ${escapeHtml([c.condicion_habitual, c.metodo_habitual].filter(Boolean).join(' · '))}</div>` : ''}
+        ${(c.condicion_habitual || c.metodo_habitual || c.dias_pago != null) ? `<div class="cliente-contacto">💳 ${escapeHtml([c.condicion_habitual, c.dias_pago != null ? c.dias_pago + ' días' : '', c.metodo_habitual].filter(Boolean).join(' · '))}</div>` : ''}
       </div>
       <div class="cliente-stats">
         <div class="cliente-stat"><div class="label">Histórico</div><div class="value">${formatMonto(stats.totalHistorico)}</div></div>
@@ -9503,6 +9827,7 @@ function clienteCardHTML(c) {
         ${c.estimado_mensual != null ? `<div class="cliente-stat"><div class="label">Estimado/mes</div><div class="value">${c.estimado_mensual}</div></div>` : ''}
         <div class="cliente-actions">
           ${wa ? `<a class="wa-link" href="https://wa.me/${wa}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
+          ${(window.PERMISOS_ROLES[window.currentRole] || {tabs: []}).tabs.indexOf('resumenes') > -1 ? `<button class="iconbtn" onclick="irAResumenDe(clientes.find(x => x.id === '${c.id}').nombre)">📑 Resumen</button>` : ''}
           <button class="iconbtn" onclick="editarCliente('${c.id}')">Editar</button>
           <button class="iconbtn danger" onclick="eliminarCliente('${c.id}')">Eliminar</button>
         </div>
@@ -9552,6 +9877,7 @@ function abrirFormularioCliente(id) {
     $('c_email').value = c.email || '';
     $('c_condicion_habitual').value = c.condicion_habitual || '';
     $('c_metodo_habitual').value = c.metodo_habitual || '';
+    $('c_dias_pago').value = c.dias_pago != null ? c.dias_pago : '';
     $('c_estimado_mensual').value = c.estimado_mensual != null ? c.estimado_mensual : '';
     $('c_saldo_favor').value = c.saldo_favor || '';
     $('c_notas').value = c.notas || '';
@@ -9566,6 +9892,7 @@ function abrirFormularioCliente(id) {
     $('c_email').value = '';
     $('c_condicion_habitual').value = '';
     $('c_metodo_habitual').value = '';
+    $('c_dias_pago').value = '';
     $('c_estimado_mensual').value = '';
     $('c_saldo_favor').value = '';
     $('c_notas').value = '';
@@ -9589,18 +9916,30 @@ async function guardarCliente() {
     mostrarAviso('Ingresá el nombre del cliente.', 'error');
     return;
   }
+  const cuitTxt = formatearCuit($('c_cuit').value);
+  if (clientes.some(x => x.id !== editandoClienteId && mismoCliente(x.nombre, nombre))) { mostrarAviso('Ya existe un cliente con ese nombre.', 'error'); return; }
+  if (cuitTxt) {
+    const dupC = clientes.find(x => x.id !== editandoClienteId && x.cuit && formatearCuit(x.cuit) === cuitTxt);
+    if (dupC) { mostrarAviso('Ese CUIT ya está cargado en el cliente "' + dupC.nombre + '".', 'error'); return; }
+    if (!cuitValido(cuitTxt)) {
+      const sigue = await confirmarAccion('El CUIT ' + cuitTxt + ' no es válido (dígito verificador incorrecto). ¿Guardar igual?');
+      if (!sigue) return;
+    }
+  }
+  const diasRaw = $('c_dias_pago').value;
   const estimadoRaw = $('c_estimado_mensual').value;
   const saldoFavorRaw = $('c_saldo_favor').value;
   const datos = {
     nombre,
     telefono: $('c_telefono').value.trim(),
-    cuit: $('c_cuit').value.trim(),
+    cuit: cuitTxt,
     condicion_iva: $('c_iva').value,
     codigo: $('c_codigo').value.trim(),
     domicilio: $('c_domicilio').value.trim(),
     email: $('c_email').value.trim(),
     condicion_habitual: $('c_condicion_habitual').value,
     metodo_habitual: $('c_metodo_habitual').value,
+    dias_pago: diasRaw === '' ? null : Math.max(0, parseInt(diasRaw, 10) || 0),
     estimado_mensual: estimadoRaw === '' ? null : parseFloat(estimadoRaw),
     saldo_favor: saldoFavorRaw === '' ? 0 : parseFloat(saldoFavorRaw),
     notas: $('c_notas').value.trim()
