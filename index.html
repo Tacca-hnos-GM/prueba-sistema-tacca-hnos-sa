@@ -17,10 +17,10 @@
      Esta tabla es la única fuente de verdad: define qué pestañas ve cada perfil y a qué datos
      puede acceder. Las reglas de Firebase (archivo firebase_reglas_v2.json) se generan desde esta misma tabla. */
   window.PERMISOS_ROLES = {
-    admin: {nombre: 'Administrador', tabs: ['ventas','pedidos','remitos','facturas','stock','flujocaja','calendario','deudores','resumenes','bitacoraventas','clientes','productos','revision'], leer: '*', escribir: '*', backup: true},
-    ventas: {nombre: 'Ventas', tabs: ['pedidos','remitos','facturas','stock','clientes','productos'],
-      leer: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos','facturas','config_facturas'],
-      escribir: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos','facturas','config_facturas']},
+    admin: {nombre: 'Administrador', tabs: ['ventas','pedidos','remitos','facturas','stock','flujocaja','calendario','deudores','resumenes','cierre','bitacoraventas','clientes','productos','revision'], leer: '*', escribir: '*', backup: true},
+    ventas: {nombre: 'Ventas', tabs: ['pedidos','remitos','facturas','stock','cierre','clientes','productos'],
+      leer: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos','facturas','config_facturas','cierres_mensuales'],
+      escribir: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos','facturas','config_facturas','cierres_mensuales']},
     tesoreria: {nombre: 'Tesorería', tabs: ['ventas','flujocaja','calendario','deudores','resumenes','clientes'],
       leer: ['ventas','clientes','productos','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones','remitos','facturas','config_facturas'],
       escribir: ['ventas','clientes','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones','remitos']}
@@ -1926,6 +1926,7 @@
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 </head>
 <body>
 
@@ -1980,6 +1981,7 @@
       <span class="tab" data-tab="calendario">Calendario</span>
       <span class="tab" data-tab="deudores">Bitácora de deudores</span>
       <span class="tab" data-tab="resumenes">📑 Resúmenes de cuenta</span>
+      <span class="tab" data-tab="cierre">🧮 Cierre mensual</span>
       <span class="tab" data-tab="bitacoraventas">Bitácora de ventas</span>
       <span class="tab" data-tab="clientes">Clientes</span>
       <span class="tab" data-tab="productos">Productos</span>
@@ -2696,6 +2698,35 @@
         <button class="primary" id="btnCc2Guardar">Registrar cobro</button>
       </div>
     </div>
+  </div>
+
+  <div id="viewCierre" style="display:none;">
+    <div id="ciAviso"></div>
+    <div class="toolbar">
+      <label class="stock-fecha">Mes a cerrar <input type="month" id="ci_mes"></label>
+      <button class="ghost" id="btnCiMesAnterior">Mes anterior</button>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Dólar BNA (billete, vendedor)</div>
+      <p style="font-size:12.5px;color:var(--text-muted);margin:-4px 0 10px;">Se usa el promedio entre la cotización de fin del mes anterior y la de fin del mes cerrado. Podés corregir los valores a mano.</p>
+      <div class="formgrid">
+        <div class="field"><label id="ci_lbl_ini">Cierre mes anterior ($)</label><input type="number" id="ci_dolar_ini" min="0" step="0.01"></div>
+        <div class="field"><label id="ci_lbl_fin">Cierre del mes ($)</label><input type="number" id="ci_dolar_fin" min="0" step="0.01"></div>
+        <div class="field"><label>Dólar promedio usado ($)</label><input type="text" id="ci_dolar_prom" readonly></div>
+      </div>
+      <div class="toolbar" style="margin-top:8px;"><button class="ghost" id="btnCiDolar">Traer cotización automática</button><span id="ci_dolar_info" style="font-size:12.5px;color:var(--text-muted);"></span></div>
+    </div>
+    <div id="ciPreview"></div>
+    <div class="chart-card">
+      <div class="chart-title">Archivos del cierre</div>
+      <div class="toolbar">
+        <button class="primary" id="btnCiExcel">📊 Descargar Excel de ingresos</button>
+        <label class="stock-fecha">Stock al <input type="date" id="ci_stock_fecha"></label>
+        <button class="ghost" id="btnCiStockPdf">📄 PDF stock de producto terminado</button>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;">Al descargar el Excel el mes queda registrado como cerrado. Si el stock de la fecha elegida no se cargó, se usa el último día cargado anterior.</p>
+    </div>
+    <div class="chart-card"><div class="chart-title">Cierres registrados</div><div id="ciHistorial"></div></div>
   </div>
 
   <div id="viewClientes" style="display:none;">
@@ -4399,6 +4430,7 @@ function refreshTodasLasVistas() {
   if ($('viewRemitos').style.display !== 'none') renderRemitos();
   if ($('viewFacturas').style.display !== 'none') renderFacturas();
   if ($('viewResumenes').style.display !== 'none') renderResumenes();
+  if ($('viewCierre').style.display !== 'none') renderCierre();
   if ($('viewFlujoCaja').style.display !== 'none') renderFlujoCaja();
   renderHeaderResumen();
 }
@@ -5046,6 +5078,7 @@ $('tabs').addEventListener('click', (e) => {
   $('viewRemitos').style.display = tab === 'remitos' ? '' : 'none';
   $('viewFacturas').style.display = tab === 'facturas' ? '' : 'none';
   $('viewResumenes').style.display = tab === 'resumenes' ? '' : 'none';
+  $('viewCierre').style.display = tab === 'cierre' ? '' : 'none';
   $('viewFlujoCaja').style.display = tab === 'flujocaja' ? '' : 'none';
   if (tab === 'revision') renderRevision();
   if (tab === 'calendario') renderCalendario();
@@ -5058,6 +5091,7 @@ $('tabs').addEventListener('click', (e) => {
   if (tab === 'remitos') renderRemitos();
   if (tab === 'facturas') renderFacturas();
   if (tab === 'resumenes') renderResumenes();
+  if (tab === 'cierre') { if (!$('ci_mes').value) { $('ci_mes').value = mesAnteriorDe(mesActualYM()); prepararDolarDesdeRegistro(); } renderCierre(); }
   if (tab === 'flujocaja') renderFlujoCaja();
 });
 
@@ -5445,7 +5479,8 @@ function construirPayloadBackup() {
     remitos: remitos,
     config_remitos: remitosConfig,
     facturas: facturas,
-    config_facturas: facturasConfig
+    config_facturas: facturasConfig,
+    cierres_mensuales: cierres
   };
 }
 
@@ -5566,6 +5601,7 @@ function importarBackup(file) {
     if (data.config_remitos) remitosConfig = normalizarConfigRemitos(data.config_remitos);
     if (Array.isArray(data.facturas)) facturas = data.facturas;
     if (data.config_facturas) facturasConfig = normalizarConfigFacturas(data.config_facturas);
+    if (data.cierres_mensuales && typeof data.cierres_mensuales === 'object' && !Array.isArray(data.cierres_mensuales)) cierres = data.cierres_mensuales;
     egresos = listaEgresos;
     egresos.forEach(e => {
       if (e.moneda === undefined) e.moneda = 'ARS';
@@ -5589,6 +5625,7 @@ function importarBackup(file) {
     try { await window.storage.set('config_remitos', JSON.stringify(remitosConfig || normalizarConfigRemitos(null)), false); } catch (e) { /* noop */ }
     try { await window.storage.set('facturas', JSON.stringify(facturas), false); } catch (e) { /* noop */ }
     try { await window.storage.set('config_facturas', JSON.stringify(facturasConfig || normalizarConfigFacturas(null)), false); } catch (e) { /* noop */ }
+    try { await window.storage.set('cierres_mensuales', JSON.stringify(cierres), false); } catch (e) { /* noop */ }
     if (data.objetivo_mensual_items != null) {
       try { await window.storage.set('objetivo_mensual_items', String(objetivoMensual), false); } catch (e) { /* noop */ }
     }
@@ -8000,6 +8037,360 @@ function formatearCuit(txt) {
   return d.length === 11 ? d.slice(0, 2) + '-' + d.slice(2, 10) + '-' + d.slice(10) : String(txt || '').trim();
 }
 
+
+// ===================== CIERRE MENSUAL =====================
+// Ingresos del mes por categoría (con IVA, las notas de crédito restan), cuenta 1 + cuenta 2,
+// conversión a US$ con el dólar BNA y PDF de stock de producto terminado.
+
+const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const CAT_ND = 'Notas de débito (intereses y ajustes)';
+const CAT_VIEJAS = 'Ventas cargadas sin detalle (sistema anterior)';
+let cierres = {};
+let dolarHistorial = null;
+
+async function cargarCierres() {
+  try {
+    const r = await window.storage.get('cierres_mensuales', false);
+    cierres = r ? JSON.parse(r.value) : {};
+  } catch (e) { cierres = {}; }
+  if ($('viewCierre').style.display !== 'none') renderCierre();
+}
+
+function nombreMes(ym) { const [a, m] = ym.split('-'); return MESES_ES[Number(m) - 1].toUpperCase() + ' ' + a; }
+function ultimoDiaMes(ym) { const [a, m] = ym.split('-').map(Number); return toISODate(new Date(a, m, 0)); }
+function mesAnteriorDe(ym) { const [a, m] = ym.split('-').map(Number); const d = new Date(a, m - 2, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+function mesActualYM() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+function enMes(fecha, ym) { return (fecha || '').slice(0, 7) === ym; }
+
+function categoriaDe(nombre) {
+  const n = (nombre || '').trim().toLowerCase();
+  const p = productos.find(x => (x.nombre || '').trim().toLowerCase() === n);
+  return p && p.categoria ? p.categoria : 'Sin categoría';
+}
+
+// Reparte el total de la factura (con IVA) entre sus renglones, sin que se pierdan centavos.
+function montosLineasFactura(f) {
+  const pct = Number(f.descuento_pct) || 0;
+  const montos = (f.items || []).map(it => r2((Number(it.cantidad) || 0) * (Number(it.precio) || 0) * (1 - pct / 100) * (1 + (Number(it.alicuota) === 10.5 ? 0.105 : 0.21))));
+  const dif = r2(Number(f.total) - montos.reduce((s, x) => s + x, 0));
+  if (Math.abs(dif) > 0.001 && montos.length) {
+    let k = 0; montos.forEach((m, i) => { if (m > montos[k]) k = i; });
+    montos[k] = r2(montos[k] + dif);
+  }
+  return montos;
+}
+
+function lineasDelMes(ym) {
+  const L = [];
+  facturas.filter(f => f.estado === 'emitida' && enMes(f.fecha, ym)).forEach(f => {
+    const signo = f.tipo === 'NC' ? -1 : 1;
+    const eti = TIPOS_COMPROBANTE[f.tipo].abrev + ' ' + f.pv + '-' + String(f.numero).padStart(8, '0');
+    const montos = montosLineasFactura(f);
+    (f.items || []).forEach((it, i) => L.push({fecha: f.fecha, cuenta: 1, comprobante: eti, cliente: f.cliente, producto: it.desc,
+      categoria: f.tipo === 'ND' ? CAT_ND : categoriaDe(it.desc), cantidad: f.tipo === 'ND' ? 0 : signo * (Number(it.cantidad) || 0), monto: signo * montos[i]}));
+  });
+  ventas.filter(v => !v.factura_id && enMes(v.fecha_venta, ym)).forEach(v => {
+    const u = (v.productos || []).reduce((s, p) => s + (Number(p.cantidad) || 0), 0);
+    L.push({fecha: v.fecha_venta, cuenta: 1, comprobante: 'Fact. ' + v.factura, cliente: v.cliente, producto: (v.productos || []).map(p => p.producto).join(', ') || '(sin detalle)',
+      categoria: CAT_VIEJAS, cantidad: u, monto: Number(v.monto) || 0});
+  });
+  let sinPrecio = 0;
+  remitos.filter(r => Number(r.cuenta) === 2 && r.estado !== 'anulado' && enMes(r.fecha, ym)).forEach(r => {
+    (r.items || []).forEach(it => {
+      if (it.precio == null || it.precio === '') sinPrecio++;
+      L.push({fecha: r.fecha, cuenta: 2, comprobante: 'Rem. ' + formatNumeroRemito(r), cliente: r.cliente, producto: it.producto, categoria: categoriaDe(it.producto),
+        cantidad: Number(it.cantidad) || 0, monto: r2((Number(it.cantidad) || 0) * (it.precio == null || it.precio === '' ? 0 : Number(it.precio)))});
+    });
+  });
+  L.sinPrecio = sinPrecio;
+  return L;
+}
+
+function calcularCierre(ym, dolarProm) {
+  const L = lineasDelMes(ym);
+  const cats = {};
+  L.forEach(l => {
+    const c = cats[l.categoria] = cats[l.categoria] || {categoria: l.categoria, cantidad: 0, monto: 0, productos: {}};
+    const p = c.productos[l.producto] = c.productos[l.producto] || {producto: l.producto, cantidad: 0, monto: 0};
+    p.cantidad += l.cantidad; p.monto = r2(p.monto + l.monto);
+    c.cantidad += l.cantidad; c.monto = r2(c.monto + l.monto);
+  });
+  const orden = categoriasProductos().concat(['Sin categoría', CAT_ND, CAT_VIEJAS]);
+  const categorias = Object.values(cats).sort((a, b) => { const ia = orden.indexOf(a.categoria), ib = orden.indexOf(b.categoria); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.categoria.localeCompare(b.categoria); });
+  categorias.forEach(c => { c.lista = Object.values(c.productos).sort((a, b) => a.producto.localeCompare(b.producto, 'es', {numeric: true})); });
+  const c1 = r2(L.filter(l => l.cuenta === 1).reduce((s, l) => s + l.monto, 0));
+  const c2 = r2(L.filter(l => l.cuenta === 2).reduce((s, l) => s + l.monto, 0));
+  const totalCats = r2(categorias.reduce((s, c) => s + c.monto, 0));
+  // Control independiente: totales de los comprobantes, sin pasar por los renglones
+  const ctrl1 = r2(facturas.filter(f => f.estado === 'emitida' && enMes(f.fecha, ym)).reduce((s, f) => s + (f.tipo === 'NC' ? -1 : 1) * Number(f.total), 0)
+    + ventas.filter(v => !v.factura_id && enMes(v.fecha_venta, ym)).reduce((s, v) => s + (Number(v.monto) || 0), 0));
+  const ctrl2 = r2(remitos.filter(r => Number(r.cuenta) === 2 && r.estado !== 'anulado' && enMes(r.fecha, ym)).reduce((s, r) => s + importeRemito(r).total, 0));
+  const total = r2(c1 + c2);
+  return {ym, lineas: L, categorias, c1, c2, total, totalCats, ctrl1, ctrl2, sinPrecio: L.sinPrecio,
+    unidades: categorias.reduce((s, c) => s + c.cantidad, 0), coincide: Math.abs(totalCats - total) < 0.01 && Math.abs(c1 - ctrl1) < 0.01 && Math.abs(c2 - ctrl2) < 0.01,
+    dolar: dolarProm || null, usd: dolarProm ? r2(total / dolarProm) : null};
+}
+
+// ---------- Dólar BNA ----------
+async function cargarHistorialDolar() {
+  if (dolarHistorial) return dolarHistorial;
+  const resp = await fetch('https://api.argentinadatos.com/v1/cotizaciones/dolares/oficial');
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  dolarHistorial = (await resp.json()).filter(x => x && x.fecha && x.venta > 0).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  return dolarHistorial;
+}
+function dolarAlDia(hist, fechaISO) {
+  let r = null;
+  hist.forEach(x => { if (x.fecha <= fechaISO) r = x; });
+  return r;
+}
+async function traerDolarAutomatico() {
+  const ym = $('ci_mes').value;
+  if (!ym) return;
+  $('ci_dolar_info').textContent = 'Buscando cotización…';
+  try {
+    const hist = await cargarHistorialDolar();
+    const ini = dolarAlDia(hist, ultimoDiaMes(mesAnteriorDe(ym)));
+    const fin = dolarAlDia(hist, ultimoDiaMes(ym));
+    if (!ini || !fin) throw new Error('sin datos');
+    $('ci_dolar_ini').value = ini.venta; $('ci_dolar_fin').value = fin.venta;
+    $('ci_dolar_info').textContent = `Tomado de ${ini.fecha} y ${fin.fecha} (fuente: ArgentinaDatos, cotización oficial vendedor). Verificalo contra el BNA.`;
+  } catch (e) {
+    $('ci_dolar_info').textContent = 'No se pudo traer la cotización automática: cargala a mano.';
+  }
+  renderCierre();
+}
+function dolarPromedioForm() {
+  const a = parseFloat($('ci_dolar_ini').value), b = parseFloat($('ci_dolar_fin').value);
+  return (a > 0 && b > 0) ? r2((a + b) / 2) : null;
+}
+
+// ---------- Pantalla ----------
+function prepararDolarDesdeRegistro() {
+  const ym = $('ci_mes').value;
+  const reg = cierres[ym];
+  $('ci_lbl_ini').textContent = 'Cierre ' + MESES_ES[Number(mesAnteriorDe(ym).split('-')[1]) - 1] + ' ($)';
+  $('ci_lbl_fin').textContent = 'Cierre ' + MESES_ES[Number(ym.split('-')[1]) - 1] + ' ($)';
+  $('ci_dolar_ini').value = reg && reg.dolar_ini ? reg.dolar_ini : '';
+  $('ci_dolar_fin').value = reg && reg.dolar_fin ? reg.dolar_fin : '';
+  $('ci_dolar_info').textContent = reg ? 'Valores del cierre ya registrado.' : '';
+  $('ci_stock_fecha').value = ultimoDiaMes(ym) > toISODate(new Date()) ? toISODate(new Date()) : ultimoDiaMes(ym);
+}
+
+function renderCierre() {
+  const ym = $('ci_mes').value;
+  if (!ym) { $('ciPreview').innerHTML = ''; return; }
+  const prom = dolarPromedioForm();
+  $('ci_dolar_prom').value = prom ? fmtMoneda(prom) : '';
+  const C = calcularCierre(ym, prom);
+  const cerrado = cierres[ym];
+  $('ciAviso').innerHTML = cerrado
+    ? `<div class="rem-aviso">Mes registrado como cerrado el ${formatFecha(cerrado.generado)} por ${escapeHtml(cerrado.por || '')}. Podés volver a descargar el Excel (se recalcula con los datos actuales).</div>`
+    : `<div class="rem-aviso ambar">${nombreMes(ym)} todavía no tiene cierre registrado.</div>`;
+  $('ciPreview').innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="label">Cuenta 1 (con IVA)</div><div class="value">${formatMonto(C.c1)}</div></div>
+      <div class="stat"><div class="label">Cuenta 2</div><div class="value">${formatMonto(C.c2)}</div></div>
+      <div class="stat"><div class="label">Total del mes</div><div class="value">${formatMonto(C.total)}</div><div class="sub">${C.coincide ? '✔ coincide con las categorías' : '⚠ NO coincide: revisar'}</div></div>
+      <div class="stat"><div class="label">Vendido en US$</div><div class="value">${C.usd != null ? 'US$ ' + fmtMoneda(C.usd) : '—'}</div><div class="sub">${prom ? 'dólar prom. ' + fmtMoneda(prom) : 'falta cargar el dólar'}</div></div>
+    </div>
+    ${C.sinPrecio ? `<div class="rem-aviso rojo">Hay ${C.sinPrecio} renglón(es) de remitos de cuenta 2 sin precio: cuentan como $0.</div>` : ''}
+    <div class="chart-card" style="margin-top:12px;"><div class="chart-title">Ingresos por categoría — ${nombreMes(ym)}</div>
+      ${C.categorias.length ? `<table class="client-table"><thead><tr><th>Categoría</th><th class="num">Cant. neta</th><th class="num">Monto neto ($)</th><th class="num">Precio prom. ($)</th><th class="num">Precio prom. (US$)</th></tr></thead><tbody>
+      ${C.categorias.map(c => `<tr><td>${escapeHtml(c.categoria)}</td><td class="num">${formatCantidad(c.cantidad)}</td><td class="num">${formatMonto(c.monto)}</td><td class="num">${c.cantidad ? fmtMoneda(c.monto / c.cantidad) : '—'}</td><td class="num">${c.cantidad && prom ? fmtMoneda(c.monto / c.cantidad / prom) : '—'}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td><b>TOTAL</b></td><td class="num"><b>${formatCantidad(C.unidades)}</b></td><td class="num"><b>${formatMonto(C.totalCats)}</b></td><td></td><td></td></tr></tfoot></table>`
+      : '<div class="empty"><h3>No hay ventas en este mes</h3></div>'}
+    </div>`;
+  const ids = Object.keys(cierres).sort().reverse();
+  $('ciHistorial').innerHTML = ids.length ? `<table class="client-table"><thead><tr><th>Mes</th><th class="num">Total</th><th class="num">US$</th><th>Registrado</th><th></th></tr></thead><tbody>${ids.map(k => `<tr><td>${nombreMes(k)}</td><td class="num">${formatMonto(cierres[k].total)}</td><td class="num">${cierres[k].usd != null ? fmtMoneda(cierres[k].usd) : '—'}</td><td>${formatFecha(cierres[k].generado)} · ${escapeHtml(cierres[k].por || '')}</td><td><button class="iconbtn" onclick="abrirCierreMes('${k}')">Abrir</button></td></tr>`).join('')}</tbody></table>` : '<span style="font-size:13px;color:var(--text-muted);">Todavía no hay cierres registrados.</span>';
+}
+
+function abrirCierreMes(ym) {
+  $('ci_mes').value = ym;
+  prepararDolarDesdeRegistro();
+  renderCierre();
+}
+
+// ---------- Excel ----------
+async function construirExcelCierre(C, prom, dIni, dFin) {
+  const EX = window.ExcelJS;
+  if (!EX) throw new Error('No se pudo cargar el generador de Excel. Revisá la conexión y recargá.');
+  const wb = new EX.Workbook();
+  const cfg = facturasConfig || normalizarConfigFacturas(null);
+  const FMT = '#,##0.00', thin = {style: 'thin', color: {argb: 'FFBBBBBB'}};
+  const gris = {type: 'pattern', pattern: 'solid', fgColor: {argb: 'FFE5E5E5'}}, azul = {type: 'pattern', pattern: 'solid', fgColor: {argb: 'FFDCE6F1'}};
+  const usd = (m) => prom ? r2(m / prom) : null;
+
+  const ws = wb.addWorksheet('Ventas por categoría');
+  ws.columns = [{width: 52}, {width: 14}, {width: 20}, {width: 18}];
+  ws.addRow([`${cfg.razon} — Ingresos por categoría — ${nombreMes(C.ym)}`]).font = {bold: true, size: 13};
+  ws.addRow(['Montos con IVA incluido. Las notas de crédito restan. Cuenta 1 + cuenta 2.']).font = {italic: true, size: 9};
+  ws.addRow([]);
+  const h = ws.addRow(['Producto', 'Unidades', 'Monto ($)', 'Monto (US$)']);
+  h.font = {bold: true}; h.fill = gris;
+  C.categorias.forEach(c => {
+    const t = ws.addRow([c.categoria.toUpperCase()]); t.font = {bold: true}; t.fill = azul;
+    for (let i = 1; i <= 4; i++) t.getCell(i).fill = azul;
+    c.lista.forEach(p => { const r = ws.addRow([p.producto, p.cantidad, p.monto, usd(p.monto)]); r.getCell(2).numFmt = '#,##0.##'; r.getCell(3).numFmt = FMT; r.getCell(4).numFmt = FMT; });
+    const s = ws.addRow(['Total ' + c.categoria, c.cantidad, c.monto, usd(c.monto)]); s.font = {bold: true};
+    s.getCell(2).numFmt = '#,##0.##'; s.getCell(3).numFmt = FMT; s.getCell(4).numFmt = FMT;
+    for (let i = 1; i <= 4; i++) s.getCell(i).border = {top: thin};
+    ws.addRow([]);
+  });
+  const g = ws.addRow(['TOTAL GENERAL', C.unidades, C.totalCats, usd(C.totalCats)]); g.font = {bold: true, size: 12}; g.fill = gris;
+  g.getCell(2).numFmt = '#,##0.##'; g.getCell(3).numFmt = FMT; g.getCell(4).numFmt = FMT;
+
+  const wr = wb.addWorksheet('Resumen');
+  wr.columns = [{width: 44}, {width: 16}, {width: 20}, {width: 18}, {width: 20}];
+  wr.addRow([`Resumen de ${nombreMes(C.ym)}`]).font = {bold: true, size: 13};
+  wr.addRow([]);
+  const hr = wr.addRow(['Categoría', 'Cant. neta', 'Monto neto ($)', 'Precio prom. ($)', 'Precio prom. (US$)']); hr.font = {bold: true}; hr.fill = gris;
+  C.categorias.forEach(c => { const r = wr.addRow([c.categoria, c.cantidad, c.monto, c.cantidad ? r2(c.monto / c.cantidad) : null, c.cantidad && prom ? r2(c.monto / c.cantidad / prom) : null]); [3, 4, 5].forEach(i => r.getCell(i).numFmt = FMT); r.getCell(2).numFmt = '#,##0.##'; });
+  const tr = wr.addRow(['TOTAL', C.unidades, C.totalCats, C.unidades ? r2(C.totalCats / C.unidades) : null, C.unidades && prom ? r2(C.totalCats / C.unidades / prom) : null]); tr.font = {bold: true};
+  [3, 4, 5].forEach(i => tr.getCell(i).numFmt = FMT); tr.getCell(2).numFmt = '#,##0.##';
+  wr.addRow([]);
+  const bloque = (titulo, filas) => { const t = wr.addRow([titulo]); t.font = {bold: true}; t.fill = azul; filas.forEach(f => { const r = wr.addRow(f); if (typeof f[1] === 'number') r.getCell(2).numFmt = FMT; }); wr.addRow([]); };
+  bloque('Cuentas (deben coincidir con el total)', [['Cuenta 1 — facturas y notas, con IVA', C.c1], ['Cuenta 2 — remitos', C.c2], ['Total cuenta 1 + cuenta 2', C.total], ['Total por categorías', C.totalCats], ['Control', C.coincide ? 'OK — coincide' : 'REVISAR — diferencia de ' + fmtMoneda(C.totalCats - C.total)]]);
+  bloque('Dólar BNA billete vendedor', [['Cierre mes anterior', dIni || null], ['Cierre del mes', dFin || null], ['Promedio usado', prom || null], ['Total vendido en US$', prom ? usd(C.total) : null]]);
+
+  const wd = wb.addWorksheet('Detalle de comprobantes');
+  wd.columns = [{width: 12}, {width: 9}, {width: 24}, {width: 34}, {width: 44}, {width: 30}, {width: 12}, {width: 18}];
+  const hd = wd.addRow(['Fecha', 'Cuenta', 'Comprobante', 'Cliente', 'Producto', 'Categoría', 'Unidades', 'Monto ($)']); hd.font = {bold: true}; hd.fill = gris;
+  C.lineas.slice().sort((a, b) => a.fecha.localeCompare(b.fecha) || a.comprobante.localeCompare(b.comprobante)).forEach(l => { const r = wd.addRow([formatFecha(l.fecha), l.cuenta, l.comprobante, l.cliente, l.producto, l.categoria, l.cantidad, l.monto]); r.getCell(8).numFmt = FMT; });
+  const td = wd.addRow(['', '', '', '', '', 'TOTAL', C.unidades, C.total]); td.font = {bold: true}; td.getCell(8).numFmt = FMT;
+  return wb.xlsx.writeBuffer();
+}
+
+function descargarBlob(buf, nombre, tipo) {
+  const blob = new Blob([buf], {type: tipo});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nombre;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+async function descargarExcelCierre() {
+  const ym = $('ci_mes').value;
+  if (!ym) { mostrarAviso('Elegí el mes.', 'error'); return; }
+  const dIni = parseFloat($('ci_dolar_ini').value) || null, dFin = parseFloat($('ci_dolar_fin').value) || null;
+  const prom = dolarPromedioForm();
+  if (!prom) {
+    const sigue = await confirmarAccion('Falta cargar el dólar de fin de mes: el Excel va a salir sin conversión a US$. ¿Continuar igual?');
+    if (!sigue) return;
+  }
+  const C = calcularCierre(ym, prom);
+  if (!C.coincide) {
+    const sigue = await confirmarAccion('Los totales no coinciden (categorías vs. cuentas). ¿Descargar igual?');
+    if (!sigue) return;
+  }
+  try {
+    const buf = await construirExcelCierre(C, prom, dIni, dFin);
+    descargarBlob(buf, `Ingresos_${nombreMes(ym).replace(' ', '_')}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  } catch (e) { mostrarAviso(e.message || 'No se pudo generar el Excel.', 'error'); return; }
+  await registrarCierre(ym, C, dIni, dFin, prom);
+}
+
+async function registrarCierre(ym, C, dIni, dFin, prom) {
+  let remoto = cierres;
+  try { const r = await window.storage.get('cierres_mensuales', false); if (r) remoto = JSON.parse(r.value); } catch (e) { /* memoria */ }
+  remoto[ym] = {mes: ym, generado: toISODate(new Date()), ts: Date.now(), por: (window.currentUser && window.currentUser.email) || '',
+    c1: C.c1, c2: C.c2, total: C.total, usd: C.usd, dolar_ini: dIni, dolar_fin: dFin, dolar: prom, unidades: C.unidades,
+    categorias: C.categorias.map(c => ({categoria: c.categoria, cantidad: c.cantidad, monto: c.monto}))};
+  try { await window.storage.set('cierres_mensuales', JSON.stringify(remoto), false); cierres = remoto; }
+  catch (e) { mostrarAviso('El Excel se descargó, pero no se pudo registrar el cierre.', 'error'); return; }
+  renderCierre();
+  mostrarAviso('Cierre de ' + nombreMes(ym) + ' registrado.', null, true);
+}
+
+// ---------- PDF de stock de producto terminado ----------
+function stockAlDia(fechaISO) {
+  const fechas = Object.keys(stockDiario).filter(f => f <= fechaISO).sort();
+  return fechas.length ? {fecha: fechas[fechas.length - 1], stock: (stockDiario[fechas[fechas.length - 1]] || {}).stock || {}} : null;
+}
+
+function construirPdfStock(fechaISO) {
+  const lib = (window.jspdf && window.jspdf.jsPDF) || null;
+  if (!lib) throw new Error('No se pudo cargar el generador de PDF.');
+  const snap = stockAlDia(fechaISO);
+  if (!snap) throw new Error('No hay stock cargado hasta esa fecha.');
+  const cfg = facturasConfig || normalizarConfigFacturas(null);
+  const grupos = {};
+  productos.forEach(p => { if (snap.stock[p.id] === undefined) return; const c = p.categoria || 'Sin categoría'; (grupos[c] = grupos[c] || []).push(p); });
+  const orden = categoriasProductos().concat(['Sin categoría']);
+  const cats = Object.keys(grupos).sort((a, b) => { const ia = orden.indexOf(a), ib = orden.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+  const doc = new lib({unit: 'mm', format: 'a4'});
+  let y;
+  const enc = () => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text(cfg.razon || '', 12, 14);
+    if (cfg.logo) { try { doc.addImage(cfg.logo, cfg.logo.indexOf('image/jpeg') > -1 ? 'JPEG' : 'PNG', 172, 8, 26, 20, undefined, 'FAST'); } catch (e) { /* sin logo */ } }
+    doc.setFontSize(12); doc.text('STOCK DE PRODUCTO TERMINADO', 12, 24);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.text('Al ' + formatFecha(snap.fecha) + (snap.fecha !== fechaISO ? ' (último stock cargado hasta el ' + formatFecha(fechaISO) + ')' : ''), 12, 29.5);
+    y = 38;
+  };
+  enc();
+  let total = 0;
+  cats.forEach(cat => {
+    const items = grupos[cat].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', {numeric: true}));
+    if (y + 14 > 276) { doc.addPage(); enc(); }
+    doc.setFillColor(225, 225, 225); doc.rect(12, y - 4, 186, 6, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text(cat.toUpperCase(), 14, y); doc.text('Cantidad', 196, y, {align: 'right'}); y += 6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    let sub = 0;
+    items.forEach(p => {
+      if (y > 276) { doc.addPage(); enc(); }
+      const q = Number(snap.stock[p.id]) || 0; sub += q;
+      doc.text(p.nombre, 14, y); doc.text(p.unidad || '', 140, y); doc.text(formatNumStock(q), 196, y, {align: 'right'}); y += 4.6;
+    });
+    doc.setFont('helvetica', 'bold'); doc.text('Total ' + cat, 14, y); doc.text(formatNumStock(sub), 196, y, {align: 'right'}); y += 8; total += sub;
+  });
+  if (y > 270) { doc.addPage(); enc(); }
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('TOTAL GENERAL (unidades cargadas): ' + formatNumStock(total), 12, y);
+  const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(120); doc.text(`Hoja ${i} de ${n}`, 198, 290, {align: 'right'}); doc.setTextColor(0); }
+  return doc;
+}
+
+function descargarPdfStock() {
+  const f = $('ci_stock_fecha').value;
+  if (!f) { mostrarAviso('Elegí la fecha del stock.', 'error'); return; }
+  try { construirPdfStock(f).save('Stock_producto_terminado_' + f + '.pdf'); }
+  catch (e) { mostrarAviso(e.message || 'No se pudo generar el PDF.', 'error'); }
+}
+
+// ---------- Aviso automático el primer día del mes (y siguientes, hasta cerrar) ----------
+function verificarCierrePendiente() {
+  const perm = (window.PERMISOS_ROLES || {})[window.currentRole];
+  if (!perm || perm.tabs.indexOf('cierre') === -1) return;
+  const pm = mesAnteriorDe(mesActualYM());
+  if (cierres[pm]) return;
+  if (lineasDelMes(pm).length === 0) return;
+  const hoyStr = toISODate(new Date());
+  try { if (localStorage.getItem('cierre_aviso_' + pm) === hoyStr) return; } catch (e) { /* sin storage */ }
+  $('cierreAutoTexto').textContent = 'Falta el cierre de ' + nombreMes(pm) + ': Excel de ingresos por categoría y PDF de stock de producto terminado.';
+  $('cierreAutoOverlay').classList.add('open');
+  window._cierrePendiente = pm;
+}
+function cierreAutoIr() {
+  $('cierreAutoOverlay').classList.remove('open');
+  const t = document.querySelector('#tabs .tab[data-tab="cierre"]');
+  if (t) t.click();
+  if (window._cierrePendiente) abrirCierreMes(window._cierrePendiente);
+}
+function cierreAutoDespues() {
+  $('cierreAutoOverlay').classList.remove('open');
+  try { localStorage.setItem('cierre_aviso_' + window._cierrePendiente, toISODate(new Date())); } catch (e) { /* sin storage */ }
+}
+
+$('ci_mes').addEventListener('change', () => { prepararDolarDesdeRegistro(); renderCierre(); });
+$('btnCiMesAnterior').addEventListener('click', () => { $('ci_mes').value = mesAnteriorDe(mesActualYM()); prepararDolarDesdeRegistro(); renderCierre(); });
+$('ci_dolar_ini').addEventListener('input', renderCierre);
+$('ci_dolar_fin').addEventListener('input', renderCierre);
+$('btnCiDolar').addEventListener('click', traerDolarAutomatico);
+$('btnCiExcel').addEventListener('click', descargarExcelCierre);
+$('btnCiStockPdf').addEventListener('click', descargarPdfStock);
+
 // ===================== FLUJO DE CAJA =====================
 
 let egresos = [];
@@ -10395,6 +10786,11 @@ function activarSincronizacionEnVivo() {
     } catch (e) { /* noop */ }
   });
 
+  window.storage.watch('cierres_mensuales', (value) => {
+    if (value == null) return;
+    try { cierres = JSON.parse(value); if ($('viewCierre').style.display !== 'none') renderCierre(); } catch (e) { /* noop */ }
+  });
+
   window.storage.watch('config_facturas', (value) => {
     if (value == null) return;
     try { facturasConfig = normalizarConfigFacturas(JSON.parse(value)); } catch (e) { /* noop */ }
@@ -10768,9 +11164,11 @@ $('loginForm').addEventListener('submit', async (e) => {
   await cargarStock();
   await cargarRemitos();
   await cargarFacturas();
+  await cargarCierres();
   renderHeaderResumen();
   activarSincronizacionEnVivo();
   await verificarBackupAutomaticoDiario();
+  verificarCierrePendiente();
 })();
 </script>
 <div id="printArea"></div>
@@ -10786,6 +11184,16 @@ $('loginForm').addEventListener('submit', async (e) => {
   </div>
 </div>
 
+<div class="modal-overlay" id="cierreAutoOverlay">
+  <div class="modal-box" style="max-width:440px;text-align:center;">
+    <h2 style="font-family:var(--font-display);font-size:18px;font-weight:600;margin:0 0 10px;">🧮 CIERRE MENSUAL PENDIENTE</h2>
+    <p style="margin-bottom:18px;" id="cierreAutoTexto"></p>
+    <div class="modal-actions" style="justify-content:center;">
+      <button class="ghost" onclick="cierreAutoDespues()">Más tarde</button>
+      <button class="primary" onclick="cierreAutoIr()">Ir al cierre</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="backupAutoOverlay">
   <div class="modal-box" style="max-width:420px;text-align:center;">
     <h2 style="font-family:var(--font-display);font-size:18px;font-weight:600;margin:0 0 10px;">✅ BACKUP TERMINADO, DESCARGAR</h2>
