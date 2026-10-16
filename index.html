@@ -17,12 +17,12 @@
      Esta tabla es la única fuente de verdad: define qué pestañas ve cada perfil y a qué datos
      puede acceder. Las reglas de Firebase (archivo firebase_reglas_v2.json) se generan desde esta misma tabla. */
   window.PERMISOS_ROLES = {
-    admin: {nombre: 'Administrador', tabs: ['ventas','pedidos','stock','flujocaja','calendario','deudores','bitacoraventas','clientes','productos','revision'], leer: '*', escribir: '*', backup: true},
-    ventas: {nombre: 'Ventas', tabs: ['pedidos','stock','clientes','productos'],
-      leer: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones'],
-      escribir: ['pedidos_pendientes','productos','stock_diario','clientes','papelera','notificaciones']},
+    admin: {nombre: 'Administrador', tabs: ['ventas','pedidos','remitos','stock','flujocaja','calendario','deudores','bitacoraventas','clientes','productos','revision'], leer: '*', escribir: '*', backup: true},
+    ventas: {nombre: 'Ventas', tabs: ['pedidos','remitos','stock','clientes','productos'],
+      leer: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos'],
+      escribir: ['pedidos_pendientes','productos','stock_diario','clientes','papelera','notificaciones','remitos','config_remitos']},
     tesoreria: {nombre: 'Tesorería', tabs: ['ventas','flujocaja','calendario','deudores','clientes'],
-      leer: ['ventas','clientes','productos','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones'],
+      leer: ['ventas','clientes','productos','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones','remitos'],
       escribir: ['ventas','clientes','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones']}
   };
   window.claveBasePermiso = function (key) {
@@ -1126,6 +1126,11 @@
     font-size:13px;
     background:#fff;
   }
+  .rem-aviso{background:var(--blue-bg);color:var(--blue-text);border-left:5px solid var(--blue);padding:10px 14px;border-radius:8px;margin-bottom:10px;font-size:13px;line-height:1.5;}
+  .rem-aviso.ambar{background:var(--amber-bg);color:var(--amber-text);border-left-color:var(--amber);}
+  .rem-aviso.rojo{background:var(--orange-bg);color:var(--orange-text);border-left-color:var(--orange);}
+  .check-inline{display:flex !important;gap:8px;align-items:center;font-size:13.5px;}
+  .check-inline input{width:auto !important;}
   .item-producto-head{display:flex;gap:8px;font-size:11.5px;color:var(--text-muted);margin-bottom:3px;padding-right:2px;}
   .item-producto-row .ped-sub{flex:0 0 auto;font-size:11.5px;color:var(--text-muted);font-family:var(--font-mono);min-width:70px;text-align:right;}
   .ped-items{width:100%;border-collapse:collapse;margin:6px 0 2px;font-size:13px;}
@@ -1914,6 +1919,7 @@
   .stock-hist-titulo{font-family:var(--font-display);margin:22px 0 8px;font-size:18px;}
   @media (max-width:640px){ .stock-tabla th:nth-child(4),.stock-tabla td:nth-child(4),.stock-tabla th:nth-child(5),.stock-tabla td:nth-child(5){display:none;} .stock-tabla input{width:90px;} }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -1961,6 +1967,7 @@
     <div class="tabs" id="tabs">
       <span class="tab active" data-tab="ventas">Ventas</span>
       <span class="tab" data-tab="pedidos">Pedidos</span>
+      <span class="tab" data-tab="remitos">📄 Remitos</span>
       <span class="tab" data-tab="stock">📦 Stock diario</span>
       <span class="tab" data-tab="flujocaja">💰 Flujo de Caja</span>
       <span class="tab" data-tab="calendario">Calendario</span>
@@ -2683,6 +2690,24 @@
           <label>CUIT</label>
           <input type="text" id="c_cuit" placeholder="20-12345678-9">
         </div>
+        <div class="field">
+          <label>Condición frente al IVA</label>
+          <select id="c_iva">
+            <option value="">Sin definir</option>
+            <option value="Responsable Inscripto">Responsable Inscripto</option>
+            <option value="Monotributo">Monotributo</option>
+            <option value="Exento">Exento</option>
+            <option value="Consumidor Final">Consumidor Final</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Código de cliente</label>
+          <input type="text" id="c_codigo" placeholder="Ej: 0123" maxlength="12">
+        </div>
+        <div class="field full">
+          <label>Domicilio (para remitos y facturas)</label>
+          <input type="text" id="c_domicilio" placeholder="Calle, número, localidad, provincia (CP)">
+        </div>
         <div class="field full">
           <label>Email</label>
           <input type="text" id="c_email" placeholder="contacto@cliente.com">
@@ -2746,6 +2771,127 @@
     </div>
 
     <div id="clientesList" style="margin-top:1.25rem;"></div>
+  </div>
+
+  <div id="viewRemitos" style="display:none;">
+    <div id="remAvisos"></div>
+    <div class="toolbar">
+      <button class="primary" id="btnNuevoRemito">+ Nuevo remito</button>
+      <input type="text" id="buscadorRemitos" placeholder="Buscar por N°, cliente, producto, pedido u OC...">
+      <button class="ghost" id="btnRemConfig">⚙️ Numeración e impresión</button>
+    </div>
+    <div class="toolbar" style="margin-top:-4px;">
+      <div class="chip-group" id="filtrosRemitos">
+        <span class="chip active" data-filter="todos">Todos</span>
+        <span class="chip" data-filter="c1">Cuenta 1</span>
+        <span class="chip" data-filter="c2">Cuenta 2</span>
+        <span class="chip" data-filter="anulado">Anulados</span>
+      </div>
+    </div>
+
+    <div class="formpanel" id="remConfigPanel">
+      <h2>Numeración e impresión de remitos</h2>
+      <div class="formgrid">
+        <div class="form-section-label">Cuenta 1 (con factura) — talonario preimpreso</div>
+        <div class="field"><label>Punto de venta</label><input type="text" id="rc1_pv" maxlength="5" style="font-family:var(--font-mono);"></div>
+        <div class="field"><label>Primer N° que vas a usar en el sistema</label><input type="number" id="rc1_primero" min="1" step="1" placeholder="Ej: 22829"></div>
+        <div class="field"><label>Talonario: desde el N°</label><input type="number" id="rc1_desde" min="1" step="1"></div>
+        <div class="field"><label>Talonario: hasta el N°</label><input type="number" id="rc1_hasta" min="1" step="1"></div>
+        <div class="field"><label>C.A.I.</label><input type="text" id="rc1_cai" maxlength="20" style="font-family:var(--font-mono);"></div>
+        <div class="field"><label>Vencimiento del C.A.I.</label><input type="date" id="rc1_vto"></div>
+        <div class="form-section-label">Cuenta 2 (efectivo, solo remito) — numeración propia</div>
+        <div class="field"><label>Punto de venta / prefijo</label><input type="text" id="rc2_pv" maxlength="5" style="font-family:var(--font-mono);"></div>
+        <div class="field"><label>Primer N° que vas a usar</label><input type="number" id="rc2_primero" min="1" step="1" placeholder="Ej: 1"></div>
+        <div class="form-section-label">Impresión</div>
+        <div class="field"><label>Ajuste horizontal (mm, + hacia la derecha)</label><input type="number" id="rc_dx" step="0.5" placeholder="0"></div>
+        <div class="field"><label>Ajuste vertical (mm, + hacia abajo)</label><input type="number" id="rc_dy" step="0.5" placeholder="0"></div>
+        <div class="field full"><label>Leyenda al pie (se imprime si el remito tiene punteras de acero)</label><input type="text" id="rc_leyenda" maxlength="120"></div>
+        <div class="field full"><label>Transportista por defecto</label><input type="text" id="rc_transp" maxlength="60" placeholder="Ej: Transporte Propio"></div>
+      </div>
+      <div class="formactions" style="flex-wrap:wrap;">
+        <button class="ghost" id="btnRemPruebaGrilla">Hoja de prueba con grilla (PDF)</button>
+        <button class="ghost" id="btnRemPrueba">Remito de prueba (PDF)</button>
+        <button class="ghost" id="btnRemConfigCancelar">Cancelar</button>
+        <button class="primary" id="btnRemConfigGuardar">Guardar</button>
+      </div>
+    </div>
+
+    <div class="formpanel" id="remitoPanel">
+      <h2 id="remitoFormTitulo">Nuevo remito</h2>
+      <div class="formgrid">
+        <div class="form-section-label">Datos del remito</div>
+        <div class="field">
+          <label>Cuenta</label>
+          <select id="rem_cuenta">
+            <option value="1">Cuenta 1 (con factura)</option>
+            <option value="2">Cuenta 2 (efectivo, solo remito)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>N° de remito (el que tiene impreso el formulario)</label>
+          <input type="number" id="rem_numero" min="1" step="1" style="font-family:var(--font-mono);">
+          <div id="rem_numero_info" style="font-size:12px;color:var(--text-muted);margin-top:3px;"></div>
+        </div>
+        <div class="field">
+          <label>Fecha</label>
+          <input type="date" id="rem_fecha">
+        </div>
+        <div class="field">
+          <label>Cliente</label>
+          <input type="text" id="rem_cliente" list="listaClientes" placeholder="Razón social del cliente">
+        </div>
+        <div class="field full">
+          <label>Domicilio</label>
+          <input type="text" id="rem_domicilio" placeholder="Se completa con la ficha del cliente">
+        </div>
+        <div class="field">
+          <label>Condición frente al IVA</label>
+          <input type="text" id="rem_iva" list="listaCondIva" placeholder="Responsable Inscripto">
+          <datalist id="listaCondIva"><option value="Responsable Inscripto"><option value="Monotributo"><option value="Exento"><option value="Consumidor Final"></datalist>
+        </div>
+        <div class="field">
+          <label>CUIT</label>
+          <input type="text" id="rem_cuit" placeholder="30-12345678-9">
+        </div>
+
+        <div class="form-section-label">Qué se entrega</div>
+        <div class="field full">
+          <label class="check-inline"><input type="checkbox" id="rem_urgencia"> Remito sin pedido (urgencia: el cliente lo pidió y se lo lleva en el día)</label>
+        </div>
+        <div class="field full" id="remPedidosField">
+          <label>Pedidos del cliente con saldo</label>
+          <div id="remPedidosChecklist"><span style="font-size:13px;color:var(--text-muted);">Elegí el cliente para ver sus pedidos.</span></div>
+        </div>
+        <div class="field full">
+          <div class="item-producto-head"><span style="flex:2;">Producto</span><span style="flex:1;">Pieza N°</span><span style="flex:1;">Cantidad</span><span style="width:96px;">Saldo pedido</span><span style="width:30px;"></span></div>
+          <div id="remItemsContainer"></div>
+          <button type="button" class="ghost" id="btnAgregarItemRemito" style="margin-top:6px;">+ Agregar producto</button>
+          <div id="remTotalInfo" style="margin-top:8px;font-size:13px;color:var(--text-muted);"></div>
+        </div>
+
+        <div class="form-section-label">Pie del remito</div>
+        <div class="field"><label>Cantidad de bultos</label><input type="number" id="rem_bultos" min="0" step="1"></div>
+        <div class="field"><label>Cantidad de kilos</label><input type="number" id="rem_kilos" min="0" step="0.01"></div>
+        <div class="field"><label>Valor mercadería (opcional)</label><input type="text" id="rem_valor" maxlength="20"></div>
+        <div class="field"><label>Transportista</label><input type="text" id="rem_tr_nombre" maxlength="60"></div>
+        <div class="field"><label>Domicilio del transportista</label><input type="text" id="rem_tr_dom" maxlength="80"></div>
+        <div class="field"><label>CUIT del transportista</label><input type="text" id="rem_tr_cuit" maxlength="20"></div>
+        <div class="field full">
+          <label class="check-inline"><input type="checkbox" id="rem_leyenda"> Imprimir la leyenda al pie (punteras de acero, norma IRAM)</label>
+        </div>
+        <div class="field full">
+          <label>Notas internas (no se imprimen)</label>
+          <input type="text" id="rem_notas" placeholder="Aclaraciones para el equipo">
+        </div>
+      </div>
+      <div class="formactions">
+        <button class="ghost" id="btnCancelarRemito">Cancelar</button>
+        <button class="ghost" id="btnGuardarRemito">Guardar</button>
+        <button class="primary" id="btnGuardarRemitoPdf">Guardar y generar PDF</button>
+      </div>
+    </div>
+
+    <div id="contenidoRemitos"><div class="loading">Cargando remitos...</div></div>
   </div>
 
   <div id="viewStock" style="display:none;">
@@ -3659,6 +3805,7 @@ function itemsProductosDesdePedido(p) {
     return p.productos.map(it => {
       const inicial = cantidadInicialItem(it);
       return {
+        iid: it.iid || null,
         producto: it.producto || '',
         cantidad: inicial,
         precio: it.precio != null ? it.precio : '',
@@ -3738,6 +3885,7 @@ async function guardarPedido() {
     if (it.precio !== '' && it.precio != null && (precio === null || precio < 0)) { errorFila = errorFila || ('Revisá el precio de "' + nombre + '".'); return; }
     const entregado = it.entregado || 0;
     productosFinal.push({
+      iid: it.iid || ('n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
       producto: nombre,
       cantidad_inicial: cant,
       cantidad: Math.max(0, Math.round((cant - entregado) * 100) / 100),
@@ -4097,6 +4245,7 @@ function refreshTodasLasVistas() {
   if ($('viewProductos').style.display !== 'none') renderProductos();
   if ($('viewBitacoraVentas').style.display !== 'none') renderBitacoraVentas();
   if ($('viewPedidos').style.display !== 'none') renderPedidos();
+  if ($('viewRemitos').style.display !== 'none') renderRemitos();
   if ($('viewFlujoCaja').style.display !== 'none') renderFlujoCaja();
   renderHeaderResumen();
 }
@@ -4506,6 +4655,17 @@ function diasEntreFechas(desdeStr, hastaStr) {
 function entregasDelPeriodo(desde, hasta) {
   const entregas = [];
   const idsEnVentas = new Set();
+  // Remitos (cuenta 1 y 2): el tiempo de entrega se mide del pedido al remito
+  remitos.forEach(r => {
+    if (r.estado === 'anulado') return;
+    (r.pedidos_origen || []).forEach(o => idsEnVentas.add(o.id));
+    if (!enRango(r.fecha, desde, hasta)) return;
+    if (r.sin_pedido_urgencia) { entregas.push({dias: 0, urgente: true}); return; }
+    (r.pedidos_origen || []).forEach(o => {
+      const d = diasEntreFechas(o.fecha, r.fecha);
+      if (d !== null) entregas.push({dias: Math.max(0, d), urgente: false, parcial: o.completo === false});
+    });
+  });
   ventas.forEach(v => {
     (v.pedidos_origen || []).forEach(o => idsEnVentas.add(o.id));
     if (!enRango(v.fecha_venta, desde, hasta)) return;
@@ -4730,6 +4890,7 @@ $('tabs').addEventListener('click', (e) => {
   $('viewBitacoraVentas').style.display = tab === 'bitacoraventas' ? '' : 'none';
   $('viewPedidos').style.display = tab === 'pedidos' ? '' : 'none';
   $('viewStock').style.display = tab === 'stock' ? '' : 'none';
+  $('viewRemitos').style.display = tab === 'remitos' ? '' : 'none';
   $('viewFlujoCaja').style.display = tab === 'flujocaja' ? '' : 'none';
   if (tab === 'revision') renderRevision();
   if (tab === 'calendario') renderCalendario();
@@ -4739,6 +4900,7 @@ $('tabs').addEventListener('click', (e) => {
   if (tab === 'bitacoraventas') renderBitacoraVentas();
   if (tab === 'pedidos') renderPedidos();
   if (tab === 'stock') renderStock();
+  if (tab === 'remitos') renderRemitos();
   if (tab === 'flujocaja') renderFlujoCaja();
 });
 
@@ -5122,7 +5284,9 @@ function construirPayloadBackup() {
     papelera: papelera,
     egresos: egresos,
     flujo_config: flujoConfig,
-    stock_diario: stockDiario
+    stock_diario: stockDiario,
+    remitos: remitos,
+    config_remitos: remitosConfig
   };
 }
 
@@ -5239,6 +5403,8 @@ function importarBackup(file) {
     if (data.stock_diario && typeof data.stock_diario === 'object' && !Array.isArray(data.stock_diario)) stockDiario = data.stock_diario;
     pedidosPendientes = listaPedidosPendientes;
     migrarPedidosPendientes();
+    if (Array.isArray(data.remitos)) remitos = data.remitos;
+    if (data.config_remitos) remitosConfig = normalizarConfigRemitos(data.config_remitos);
     egresos = listaEgresos;
     egresos.forEach(e => {
       if (e.moneda === undefined) e.moneda = 'ARS';
@@ -5258,6 +5424,8 @@ function importarBackup(file) {
     await guardarEgresosEnStorage();
     await guardarFlujoConfigEnStorage();
     try { await window.storage.set('stock_diario', JSON.stringify(stockDiario), false); } catch (e) { /* noop */ }
+    try { await window.storage.set('remitos', JSON.stringify(remitos), false); } catch (e) { /* noop */ }
+    try { await window.storage.set('config_remitos', JSON.stringify(remitosConfig || normalizarConfigRemitos(null)), false); } catch (e) { /* noop */ }
     if (data.objetivo_mensual_items != null) {
       try { await window.storage.set('objetivo_mensual_items', String(objetivoMensual), false); } catch (e) { /* noop */ }
     }
@@ -5570,7 +5738,8 @@ function migrarPedidosPendientes() {
       delete p.cantidad;
       delete p.nota;
     }
-    p.productos.forEach(it => {
+    p.productos.forEach((it, i) => {
+      if (!it.iid) it.iid = 'i' + i;
       if (it.cantidad_inicial === undefined) it.cantidad_inicial = it.cantidad != null ? it.cantidad : 0;
       if (it.precio === undefined) it.precio = null;
     });
@@ -5590,6 +5759,806 @@ function totalItemsPedidosPendientes() {
     .filter(p => !p.facturado)
     .reduce((s,p) => s + cantidadTotalPedido(p), 0);
 }
+
+/* ===================== PDF DE REMITO (sobre formulario preimpreso A4) =====================
+   Todas las medidas están en milímetros, medidas desde la esquina superior izquierda de la hoja.
+   El formulario ya trae impreso: logo, datos de la empresa, N° de remito, CUIT, leyendas y recuadros.
+   El sistema solo imprime los datos variables en estas coordenadas fijas. */
+const REMITO_LAYOUT = {
+  fecha:        {x: 130,  y: 42.4},
+  cliente:      {x: 40,   y: 73.5, maxW: 108},
+  domicilio:    {x: 40,   y: 84,   maxW: 108, lineH: 4.8},
+  iva:          {x: 30,   y: 100.4, maxW: 90},
+  cuit:         {x: 128,  y: 100.6},
+  filas:        {y0: 126.5, alto: 5.2, max: 19, cantR: 39.5, pieza: 52, detalle: 76, detalleMaxW: 114},
+  bultos:       {x: 20.8, y: 233.5},
+  kilos:        {x: 72,   y: 233.5},
+  valor:        {x: 117,  y: 233.5},
+  leyenda:      {x: 26.4, y: 240.5, maxW: 160},
+  transp:       {x: 63,   y: 254,   maxW: 42},
+  transpDom:    {x: 40,   y: 263,   maxW: 66},
+  transpCuit:   {x: 33,   y: 271.6, maxW: 70}
+};
+
+function formatCantidadRemito(n) {
+  const v = Number(n) || 0;
+  const r = Math.round(v * 100) / 100;
+  return (Number.isInteger(r) ? r.toFixed(1) : String(r)).replace('.', ',');
+}
+
+function fechaRemitoTexto(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+}
+
+function construirPdfRemito(remito, cfg, opciones) {
+  opciones = opciones || {};
+  cfg = cfg || {};
+  const lib = (window.jspdf && window.jspdf.jsPDF) || null;
+  if (!lib) throw new Error('No se pudo cargar la librería de PDF. Revisá la conexión a internet y recargá la página.');
+  const doc = new lib({unit: 'mm', format: 'a4', orientation: 'portrait'});
+  const L = REMITO_LAYOUT;
+  const dx = Number(cfg.dx) || 0, dy = Number(cfg.dy) || 0;
+  const X = (v) => v + dx, Y = (v) => v + dy;
+  const texto = (t, x, y, o) => { if (t != null && String(t) !== '') doc.text(String(t), X(x), Y(y), o || {}); };
+  const ajustado = (t, maxW) => {
+    // Achica el texto (hasta 7 pt) si no entra en el ancho disponible
+    let size = 10;
+    doc.setFontSize(size);
+    while (size > 7 && doc.getTextWidth(String(t)) > maxW) { size -= 0.5; doc.setFontSize(size); }
+    return size;
+  };
+
+  if (opciones.grilla) {
+    doc.setDrawColor(200); doc.setLineWidth(0.1); doc.setTextColor(150); doc.setFontSize(6); doc.setFont('helvetica', 'normal');
+    for (let mm = 0; mm <= 210; mm += 10) { doc.line(mm, 0, mm, 297); doc.text(String(mm), mm + 0.5, 3); }
+    for (let mm = 0; mm <= 297; mm += 10) { doc.line(0, mm, 210, mm); doc.text(String(mm), 0.5, mm - 0.5); }
+    doc.setDrawColor(230);
+    for (let mm = 5; mm <= 210; mm += 10) doc.line(mm, 0, mm, 297);
+    for (let mm = 5; mm <= 297; mm += 10) doc.line(0, mm, 210, mm);
+  }
+
+  doc.setTextColor(0); doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  texto(fechaRemitoTexto(remito.fecha), L.fecha.x, L.fecha.y);
+
+  ajustado(remito.cliente || '', L.cliente.maxW);
+  texto(remito.cliente, L.cliente.x, L.cliente.y);
+  doc.setFontSize(10);
+  const domLineas = doc.splitTextToSize(String(remito.domicilio || ''), L.domicilio.maxW).slice(0, 2);
+  domLineas.forEach((ln, i) => texto(ln, L.domicilio.x, L.domicilio.y + i * L.domicilio.lineH));
+
+  ajustado(remito.iva || '', L.iva.maxW);
+  texto(remito.iva, L.iva.x, L.iva.y);
+  doc.setFontSize(10);
+  texto(remito.cuit, L.cuit.x, L.cuit.y);
+
+  const items = (remito.items || []).slice(0, L.filas.max);
+  items.forEach((it, i) => {
+    const y = L.filas.y0 + i * L.filas.alto;
+    doc.setFontSize(10);
+    texto(formatCantidadRemito(it.cantidad), L.filas.cantR, y, {align: 'right'});
+    texto(it.pieza || '', L.filas.pieza, y);
+    ajustado(it.producto || '', L.filas.detalleMaxW);
+    texto(it.producto, L.filas.detalle, y);
+  });
+
+  doc.setFontSize(10);
+  texto('Cantidad de bultos:', L.bultos.x, L.bultos.y);
+  texto('Cantidad de kilos:', L.kilos.x, L.kilos.y);
+  texto('Valor mercadería:', L.valor.x, L.valor.y);
+  doc.setFont('helvetica', 'bold');
+  texto(remito.bultos != null && remito.bultos !== '' ? remito.bultos : '', L.bultos.x + 33, L.bultos.y);
+  texto(remito.kilos != null && remito.kilos !== '' ? String(remito.kilos).replace('.', ',') : '', L.kilos.x + 31, L.kilos.y);
+  texto(remito.valor != null && remito.valor !== '' ? String(remito.valor).replace('.', ',') : '', L.valor.x + 31, L.valor.y);
+  doc.setFont('helvetica', 'normal');
+
+  if (remito.imprimir_leyenda && cfg.leyenda) {
+    doc.setFontSize(10);
+    const size = ajustado(cfg.leyenda, L.leyenda.maxW);
+    doc.setFontSize(size);
+    texto(cfg.leyenda, L.leyenda.x, L.leyenda.y);
+  }
+
+  const tr = remito.transportista || {};
+  doc.setFontSize(10);
+  if (tr.nombre) { ajustado(tr.nombre, L.transp.maxW); texto(tr.nombre, L.transp.x, L.transp.y); }
+  doc.setFontSize(10);
+  if (tr.domicilio) { ajustado(tr.domicilio, L.transpDom.maxW); texto(tr.domicilio, L.transpDom.x, L.transpDom.y); }
+  doc.setFontSize(10);
+  texto(tr.cuit, L.transpCuit.x, L.transpCuit.y);
+  return doc;
+}
+
+// ===================== REMITOS =====================
+// Un remito descuenta del saldo de los pedidos que se eligen. La numeración es la del formulario preimpreso.
+
+let remitos = [];
+let remitosConfig = null;
+let editandoRemitoId = null;
+let remOriginal = null;          // copia del remito en edición (para devolver su saldo al pedido antes de aplicar los cambios)
+let remItems = [];               // renglones del formulario
+let remPedidosSel = new Set();   // pedidos elegidos en el formulario
+let remLeyendaManual = false;
+let filtroRemitos = 'todos';
+let busquedaRemitos = '';
+
+const REMITOS_CONFIG_DEFECTO = {
+  c1: {pv: '00001', primero: null, desde: 22401, hasta: 23000, cai: '52074217148390', vto_cai: '2027-02-13'},
+  c2: {pv: '00002', primero: null},
+  dx: 0, dy: 0,
+  leyenda: 'PUNTERAS DE ACERO FABRICADAS BAJO NORMAS IRAM 3643-EN-...',
+  transp: 'Transporte Propio'
+};
+
+function normalizarConfigRemitos(c) {
+  const d = REMITOS_CONFIG_DEFECTO;
+  c = c || {};
+  return {
+    c1: Object.assign({}, d.c1, c.c1 || {}),
+    c2: Object.assign({}, d.c2, c.c2 || {}),
+    dx: Number(c.dx) || 0,
+    dy: Number(c.dy) || 0,
+    leyenda: c.leyenda != null ? c.leyenda : d.leyenda,
+    transp: c.transp != null ? c.transp : d.transp
+  };
+}
+
+async function cargarRemitos() {
+  try {
+    const r = await window.storage.get('remitos', false);
+    remitos = r ? JSON.parse(r.value) : [];
+  } catch (e) { remitos = []; }
+  try {
+    const c = await window.storage.get('config_remitos', false);
+    remitosConfig = normalizarConfigRemitos(c ? JSON.parse(c.value) : null);
+  } catch (e) { remitosConfig = normalizarConfigRemitos(null); }
+  if ($('viewRemitos').style.display !== 'none') renderRemitos();
+}
+
+function configCuenta(cuenta) {
+  if (!remitosConfig) remitosConfig = normalizarConfigRemitos(null);
+  return Number(cuenta) === 2 ? remitosConfig.c2 : remitosConfig.c1;
+}
+
+function formatNumeroRemito(r) {
+  return (r.pv || '') + '-' + String(r.numero).padStart(8, '0');
+}
+
+function ultimoNumeroRemito(cuenta) {
+  const ns = remitos.filter(r => Number(r.cuenta) === Number(cuenta)).map(r => Number(r.numero) || 0);
+  return ns.length ? Math.max.apply(null, ns) : null;
+}
+
+function siguienteNumeroRemito(cuenta) {
+  const cfg = configCuenta(cuenta);
+  const ult = ultimoNumeroRemito(cuenta);
+  const primero = cfg.primero ? Number(cfg.primero) : null;
+  if (ult === null) return primero;
+  return Math.max(ult + 1, primero || 0);
+}
+
+function diasHastaIso(iso) {
+  const d = diasEntreFechas(toISODate(new Date()), iso);
+  return d;
+}
+
+function renderAvisosRemitos() {
+  const cfg = configCuenta(1);
+  const sig1 = siguienteNumeroRemito(1);
+  const partes = [];
+  let nivel = '';
+  if (sig1 !== null) {
+    partes.push(`Próximo remito cuenta 1: <b>${escapeHtml(cfg.pv)}-${String(sig1).padStart(8, '0')}</b>`);
+    if (cfg.hasta) {
+      const quedan = Number(cfg.hasta) - sig1 + 1;
+      if (quedan <= 0) { partes.push('<b>⛔ El talonario se terminó</b>'); nivel = 'rojo'; }
+      else {
+        partes.push(`quedan <b>${quedan}</b> número${quedan === 1 ? '' : 's'} del talonario (hasta el ${cfg.hasta})`);
+        if (quedan <= 30) nivel = 'rojo'; else if (quedan <= 100 && nivel !== 'rojo') nivel = 'ambar';
+      }
+    }
+  } else {
+    partes.push('Cuenta 1: todavía no definiste con qué número arrancar (⚙️ Numeración e impresión).');
+    nivel = 'ambar';
+  }
+  if (cfg.vto_cai) {
+    const dias = diasHastaIso(cfg.vto_cai);
+    if (dias !== null) {
+      if (dias < 0) { partes.push(`<b>⛔ C.A.I. vencido hace ${-dias} día${dias === -1 ? '' : 's'}</b>`); nivel = 'rojo'; }
+      else {
+        partes.push(`C.A.I. vence el ${formatFecha(cfg.vto_cai)} (en ${dias} día${dias === 1 ? '' : 's'})`);
+        if (dias <= 15) nivel = 'rojo'; else if (dias <= 60 && nivel !== 'rojo') nivel = 'ambar';
+      }
+    }
+  }
+  const sig2 = siguienteNumeroRemito(2);
+  if (sig2 !== null) partes.push(`Cuenta 2: <b>${escapeHtml(configCuenta(2).pv)}-${String(sig2).padStart(8, '0')}</b>`);
+  $('remAvisos').innerHTML = `<div class="rem-aviso ${nivel}">${partes.join(' · ')}</div>`;
+}
+
+// ---------- Formulario ----------
+function productoCatalogo(nombre) {
+  const n = (nombre || '').trim().toLowerCase();
+  return productos.find(p => (p.nombre || '').trim().toLowerCase() === n) || null;
+}
+
+function esProductoConLeyenda(nombre) {
+  const p = productoCatalogo(nombre);
+  return !!(p && /^punteras de acero/i.test(p.categoria || ''));
+}
+
+function actualizarLeyendaAuto() {
+  if (remLeyendaManual) return;
+  $('rem_leyenda').checked = remItems.some(it => esProductoConLeyenda(it.producto));
+}
+
+function disponibleItemPedido(pedidoId, iid) {
+  const p = pedidosPendientes.find(x => x.id === pedidoId);
+  if (!p) return 0;
+  const it = (p.productos || []).find(x => x.iid === iid);
+  if (!it) return 0;
+  let disp = Number(it.cantidad) || 0;
+  if (remOriginal) {
+    const devuelto = (remOriginal.items || [])
+      .filter(x => x.pedido_id === pedidoId && x.pedido_iid === iid)
+      .reduce((s, x) => s + (Number(x.cantidad) || 0), 0);
+    disp = Math.min(cantidadInicialItem(it), disp + devuelto);
+  }
+  return Math.round(disp * 100) / 100;
+}
+
+function nombreClienteRemito() { return $('rem_cliente').value.trim(); }
+
+function pedidosElegiblesRemito() {
+  const nombre = nombreClienteRemito().toLowerCase();
+  if (!nombre) return [];
+  return pedidosPendientes.filter(p => (p.cliente || '').trim().toLowerCase() === nombre &&
+    (remPedidosSel.has(p.id) || (!p.facturado && (p.productos || []).some(it => (Number(it.cantidad) || 0) > 0))));
+}
+
+function renderRemPedidos() {
+  const urg = $('rem_urgencia').checked;
+  $('remPedidosField').style.display = urg ? 'none' : '';
+  if (urg) return;
+  const lista = pedidosElegiblesRemito();
+  if (!nombreClienteRemito()) {
+    $('remPedidosChecklist').innerHTML = '<span style="font-size:13px;color:var(--text-muted);">Elegí el cliente para ver sus pedidos.</span>';
+    return;
+  }
+  if (lista.length === 0) {
+    $('remPedidosChecklist').innerHTML = '<span style="font-size:13px;color:var(--text-muted);">Este cliente no tiene pedidos con saldo. Podés cargar los productos a mano abajo o tildar “Remito sin pedido”.</span>';
+    return;
+  }
+  $('remPedidosChecklist').innerHTML = `<div class="facturas-checklist">${lista.map(p => `
+    <label class="factura-check-row">
+      <input type="checkbox" ${remPedidosSel.has(p.id) ? 'checked' : ''} onchange="toggleRemPedido('${p.id}', this.checked)">
+      <span>${p.numero ? 'Pedido N° ' + escapeHtml(p.numero) + ' — ' : ''}${formatFecha(p.fecha)}${p.oc ? ' — OC ' + escapeHtml(p.oc) : ''} — debe ${formatCantidad(cantidadTotalPedido(p))} u.</span>
+    </label>`).join('')}</div>`;
+}
+
+function toggleRemPedido(pedidoId, marcado) {
+  const p = pedidosPendientes.find(x => x.id === pedidoId);
+  if (!p) return;
+  if (marcado) {
+    remPedidosSel.add(pedidoId);
+    if (remItems.length === 1 && !remItems[0].producto && !remItems[0].cantidad) remItems = [];
+    (p.productos || []).forEach(it => {
+      const disp = disponibleItemPedido(pedidoId, it.iid);
+      if (disp <= 0) return;
+      const cat = productoCatalogo(it.producto);
+      remItems.push({producto: it.producto, pieza: (cat && cat.pieza) || '', cantidad: disp, pedido_id: pedidoId, pedido_iid: it.iid, saldo: disp, precio: it.precio != null ? it.precio : null});
+    });
+  } else {
+    remPedidosSel.delete(pedidoId);
+    remItems = remItems.filter(it => it.pedido_id !== pedidoId);
+    if (remItems.length === 0) remItems.push(itemRemitoVacio());
+  }
+  renderRemItems();
+}
+
+function itemRemitoVacio() { return {producto: '', pieza: '', cantidad: '', pedido_id: null, pedido_iid: null, saldo: null, precio: null}; }
+
+function renderRemItems() {
+  $('remItemsContainer').innerHTML = remItems.map((it, i) => `
+    <div class="item-producto-row">
+      <input type="text" list="listaProductos" placeholder="Producto" value="${escapeHtml(it.producto || '')}" ${it.pedido_id ? 'readonly title="Viene del pedido"' : ''} oninput="actualizarItemRemito(${i}, 'producto', this.value)" onchange="autoPiezaRemito(${i})">
+      <input type="text" placeholder="Pieza N°" value="${escapeHtml(it.pieza || '')}" style="flex:1;" oninput="actualizarItemRemito(${i}, 'pieza', this.value)">
+      <input type="number" placeholder="Cantidad" min="0" step="1" value="${it.cantidad != null ? it.cantidad : ''}" oninput="actualizarItemRemito(${i}, 'cantidad', this.value)">
+      <span class="ped-sub" style="width:96px;" id="rem_saldo_${i}">${it.saldo != null ? 'de ' + formatCantidad(it.saldo) : ''}</span>
+      ${remItems.length > 1 ? `<button type="button" class="item-producto-del" onclick="eliminarItemRemito(${i})" title="Quitar">✕</button>` : '<span style="width:30px;"></span>'}
+    </div>`).join('');
+  actualizarTotalRemito();
+  actualizarLeyendaAuto();
+}
+
+function actualizarItemRemito(i, campo, valor) {
+  if (!remItems[i]) return;
+  remItems[i][campo] = valor;
+  if (campo === 'producto') actualizarLeyendaAuto();
+  if (campo === 'cantidad') actualizarTotalRemito();
+}
+
+function autoPiezaRemito(i) {
+  const it = remItems[i];
+  if (!it) return;
+  const cat = productoCatalogo(it.producto);
+  if (cat && cat.pieza && !(it.pieza || '').trim()) { it.pieza = cat.pieza; renderRemItems(); }
+}
+
+function eliminarItemRemito(i) {
+  const it = remItems[i];
+  remItems.splice(i, 1);
+  if (remItems.length === 0) remItems.push(itemRemitoVacio());
+  renderRemItems();
+}
+
+function agregarItemRemito() {
+  remItems.push(itemRemitoVacio());
+  renderRemItems();
+}
+
+function actualizarTotalRemito() {
+  const total = remItems.reduce((s, it) => s + (numPed(it.cantidad) || 0), 0);
+  const n = remItems.filter(it => (it.producto || '').trim()).length;
+  const max = REMITO_LAYOUT.filas.max;
+  $('remTotalInfo').innerHTML = `${n} renglón${n === 1 ? '' : 'es'} (máximo ${max} en el formulario) · <b>${formatCantidad(total)}</b> unidades`;
+}
+
+function actualizarInfoNumeroRemito() {
+  const cuenta = Number($('rem_cuenta').value);
+  const cfg = configCuenta(cuenta);
+  const sig = siguienteNumeroRemito(cuenta);
+  $('rem_numero_info').textContent = `Formato: ${cfg.pv}-${String($('rem_numero').value || sig || '').padStart(8, '0')}` + (cuenta === 1 && cfg.desde ? ` · talonario ${cfg.desde} a ${cfg.hasta}` : '');
+}
+
+function completarDatosClienteRemito() {
+  const c = clientes.find(x => (x.nombre || '').trim().toLowerCase() === nombreClienteRemito().toLowerCase());
+  if (!c) return;
+  $('rem_domicilio').value = c.domicilio || '';
+  $('rem_iva').value = c.condicion_iva || '';
+  $('rem_cuit').value = c.cuit || '';
+}
+
+function abrirFormularioRemito() {
+  editandoRemitoId = null;
+  remOriginal = null;
+  remPedidosSel = new Set();
+  remLeyendaManual = false;
+  limpiarValidaciones();
+  $('remitoFormTitulo').textContent = 'Nuevo remito';
+  $('rem_cuenta').value = '1';
+  const sig = siguienteNumeroRemito(1);
+  $('rem_numero').value = sig !== null ? sig : '';
+  $('rem_fecha').value = toISODate(new Date());
+  $('rem_cliente').value = '';
+  $('rem_domicilio').value = '';
+  $('rem_iva').value = '';
+  $('rem_cuit').value = '';
+  $('rem_urgencia').checked = false;
+  $('rem_bultos').value = '';
+  $('rem_kilos').value = '';
+  $('rem_valor').value = '';
+  $('rem_tr_nombre').value = (remitosConfig && remitosConfig.transp) || '';
+  $('rem_tr_dom').value = '';
+  $('rem_tr_cuit').value = '';
+  $('rem_leyenda').checked = false;
+  $('rem_notas').value = '';
+  remItems = [itemRemitoVacio()];
+  renderRemPedidos();
+  renderRemItems();
+  actualizarInfoNumeroRemito();
+  $('remConfigPanel').classList.remove('open');
+  $('remitoPanel').classList.add('open');
+}
+
+function cerrarFormularioRemito() {
+  $('remitoPanel').classList.remove('open');
+  editandoRemitoId = null;
+  remOriginal = null;
+}
+
+function editarRemito(id) {
+  const r = remitos.find(x => x.id === id);
+  if (!r) return;
+  if (r.estado === 'anulado') { mostrarAviso('Un remito anulado no se puede editar.', 'error'); return; }
+  if (r.factura_id) { mostrarAviso('Este remito ya fue facturado: no se puede editar.', 'error'); return; }
+  limpiarValidaciones();
+  editandoRemitoId = id;
+  remOriginal = JSON.parse(JSON.stringify(r));
+  remPedidosSel = new Set((r.pedidos_origen || []).map(o => o.id));
+  remLeyendaManual = true;
+  $('remitoFormTitulo').textContent = 'Editar remito ' + formatNumeroRemito(r);
+  $('rem_cuenta').value = String(r.cuenta);
+  $('rem_numero').value = r.numero;
+  $('rem_fecha').value = r.fecha;
+  $('rem_cliente').value = r.cliente || '';
+  $('rem_domicilio').value = r.domicilio || '';
+  $('rem_iva').value = r.iva || '';
+  $('rem_cuit').value = r.cuit || '';
+  $('rem_urgencia').checked = !!r.sin_pedido_urgencia;
+  $('rem_bultos').value = r.bultos != null ? r.bultos : '';
+  $('rem_kilos').value = r.kilos != null ? r.kilos : '';
+  $('rem_valor').value = r.valor || '';
+  const tr = r.transportista || {};
+  $('rem_tr_nombre').value = tr.nombre || '';
+  $('rem_tr_dom').value = tr.domicilio || '';
+  $('rem_tr_cuit').value = tr.cuit || '';
+  $('rem_leyenda').checked = !!r.imprimir_leyenda;
+  $('rem_notas').value = r.notas || '';
+  remItems = (r.items || []).map(it => ({
+    producto: it.producto, pieza: it.pieza || '', cantidad: it.cantidad,
+    pedido_id: it.pedido_id || null, pedido_iid: it.pedido_iid || null,
+    saldo: it.pedido_id ? disponibleItemPedido(it.pedido_id, it.pedido_iid) : null,
+    precio: it.precio != null ? it.precio : null
+  }));
+  if (remItems.length === 0) remItems = [itemRemitoVacio()];
+  renderRemPedidos();
+  renderRemItems();
+  actualizarInfoNumeroRemito();
+  $('remConfigPanel').classList.remove('open');
+  $('remitoPanel').classList.add('open');
+  $('remitoPanel').scrollIntoView({behavior: 'smooth'});
+}
+
+// ---------- Efecto sobre el saldo de los pedidos ----------
+function revertirRemitoEnPedidos(rem) {
+  const tocados = new Set();
+  (rem.items || []).forEach(it => {
+    if (!it.pedido_id) return;
+    const p = pedidosPendientes.find(x => x.id === it.pedido_id);
+    if (!p) return;
+    const pi = (p.productos || []).find(x => x.iid === it.pedido_iid);
+    if (!pi) return;
+    pi.cantidad = Math.min(cantidadInicialItem(pi), Math.round(((Number(pi.cantidad) || 0) + (Number(it.cantidad) || 0)) * 100) / 100);
+    tocados.add(p.id);
+  });
+  tocados.forEach(id => {
+    const p = pedidosPendientes.find(x => x.id === id);
+    if (p && p.facturado && p.cierre_auto && cantidadTotalPedido(p) > 0) { p.facturado = false; p.fecha_facturado = null; p.cierre_auto = false; }
+  });
+}
+
+function aplicarRemitoEnPedidos(rem) {
+  const tocados = new Set();
+  (rem.items || []).forEach(it => {
+    if (!it.pedido_id) return;
+    const p = pedidosPendientes.find(x => x.id === it.pedido_id);
+    if (!p) return;
+    const pi = (p.productos || []).find(x => x.iid === it.pedido_iid);
+    if (!pi) return;
+    pi.cantidad = Math.max(0, Math.round(((Number(pi.cantidad) || 0) - (Number(it.cantidad) || 0)) * 100) / 100);
+    tocados.add(p.id);
+  });
+  const origen = [];
+  tocados.forEach(id => {
+    const p = pedidosPendientes.find(x => x.id === id);
+    if (!p) return;
+    const completo = cantidadTotalPedido(p) <= 0;
+    if (completo && !p.facturado) { p.facturado = true; p.fecha_facturado = rem.fecha; p.cierre_auto = true; }
+    origen.push({id: p.id, numero: p.numero || '', fecha: p.fecha, oc: p.oc || '', completo});
+  });
+  return origen;
+}
+
+// ---------- Guardado ----------
+async function persistirRemito(rem) {
+  let remoto = remitos;
+  try {
+    const r = await window.storage.get('remitos', false);
+    if (r) remoto = JSON.parse(r.value);
+  } catch (e) { /* se usa lo que hay en memoria */ }
+  const dup = remoto.find(x => x.id !== rem.id && Number(x.cuenta) === Number(rem.cuenta) && Number(x.numero) === Number(rem.numero));
+  if (dup) return {error: 'dup', dup};
+  const i = remoto.findIndex(x => x.id === rem.id);
+  if (i >= 0) remoto[i] = rem; else remoto.push(rem);
+  await window.storage.set('remitos', JSON.stringify(remoto), false);
+  remitos = remoto;
+  return {ok: true};
+}
+
+async function validarNumeroRemito(cuenta, numero) {
+  const cfg = configCuenta(cuenta);
+  if (Number(cuenta) !== 1) return true;
+  if (cfg.desde && cfg.hasta && (numero < cfg.desde || numero > cfg.hasta)) {
+    const ok = await confirmarAccion(`El N° ${numero} está fuera del talonario (${cfg.desde} a ${cfg.hasta}). ¿Guardar igual?`);
+    if (!ok) return false;
+  }
+  if (cfg.vto_cai) {
+    const dias = diasHastaIso(cfg.vto_cai);
+    if (dias !== null && dias < 0) {
+      const ok = await confirmarAccion(`El C.A.I. venció el ${formatFecha(cfg.vto_cai)}. Un remito emitido con C.A.I. vencido no es válido. ¿Guardar igual?`);
+      if (!ok) return false;
+    }
+  }
+  return true;
+}
+
+async function guardarRemito(conPdf) {
+  const cuenta = Number($('rem_cuenta').value);
+  const numero = parseInt($('rem_numero').value, 10);
+  const fecha = $('rem_fecha').value;
+  const cliente = nombreClienteRemito();
+  const urgencia = $('rem_urgencia').checked;
+  if (!numero || numero < 1) { mostrarAviso('Ingresá el N° de remito (el que trae impreso el formulario).', 'error'); return; }
+  if (!fecha || !cliente) { mostrarAviso('Completá la fecha y el cliente.', 'error'); return; }
+
+  const items = [];
+  let errorFila = null;
+  remItems.forEach(it => {
+    const nombre = (it.producto || '').trim();
+    if (!nombre) return;
+    const cant = numPed(it.cantidad);
+    if (cant === null || cant <= 0) { errorFila = errorFila || ('Revisá la cantidad de "' + nombre + '": tiene que ser mayor a cero.'); return; }
+    items.push({
+      producto: nombre, pieza: (it.pieza || '').trim(), cantidad: cant,
+      pedido_id: urgencia ? null : (it.pedido_id || null), pedido_iid: urgencia ? null : (it.pedido_iid || null),
+      precio: it.precio != null ? it.precio : null
+    });
+  });
+  if (errorFila) { mostrarAviso(errorFila, 'error'); return; }
+  if (items.length === 0) { mostrarAviso('Cargá al menos un producto con su cantidad.', 'error'); return; }
+  if (items.length > REMITO_LAYOUT.filas.max) {
+    mostrarAviso('El formulario preimpreso admite ' + REMITO_LAYOUT.filas.max + ' renglones. Dividí la entrega en dos remitos.', 'error');
+    return;
+  }
+  if (!urgencia && !items.some(it => it.pedido_id)) {
+    mostrarAviso('Elegí al menos un pedido del cliente o tildá “Remito sin pedido (urgencia)”.', 'error');
+    return;
+  }
+  // Entrega mayor al saldo
+  const excedidos = items.filter(it => it.pedido_id && it.cantidad > disponibleItemPedido(it.pedido_id, it.pedido_iid) + 0.0001);
+  if (excedidos.length) {
+    const ok = await confirmarAccion('Estás entregando más que el saldo del pedido en: ' + excedidos.map(x => x.producto).join(', ') + '. ¿Continuar igual?');
+    if (!ok) return;
+  }
+  if (!(await validarNumeroRemito(cuenta, numero))) return;
+
+  const cfg = configCuenta(cuenta);
+  const bultosRaw = $('rem_bultos').value, kilosRaw = $('rem_kilos').value;
+  const base = {
+    id: editandoRemitoId || ('rem_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)),
+    cuenta, pv: (editandoRemitoId && remOriginal && Number(remOriginal.cuenta) === cuenta) ? remOriginal.pv : cfg.pv,
+    numero, fecha, cliente,
+    domicilio: $('rem_domicilio').value.trim(), iva: $('rem_iva').value.trim(), cuit: $('rem_cuit').value.trim(),
+    sin_pedido_urgencia: urgencia,
+    items,
+    bultos: bultosRaw === '' ? null : parseFloat(bultosRaw),
+    kilos: kilosRaw === '' ? null : parseFloat(kilosRaw),
+    valor: $('rem_valor').value.trim(),
+    transportista: {nombre: $('rem_tr_nombre').value.trim(), domicilio: $('rem_tr_dom').value.trim(), cuit: $('rem_tr_cuit').value.trim()},
+    imprimir_leyenda: $('rem_leyenda').checked,
+    notas: $('rem_notas').value.trim(),
+    estado: 'emitido',
+    creado_por: editandoRemitoId && remOriginal ? remOriginal.creado_por : ((window.currentUser && window.currentUser.email) || ''),
+    creado_ts: editandoRemitoId && remOriginal ? remOriginal.creado_ts : Date.now(),
+    modificado_ts: Date.now()
+  };
+
+  const snapshotPedidos = JSON.stringify(pedidosPendientes);
+  if (remOriginal) revertirRemitoEnPedidos(remOriginal);
+  base.pedidos_origen = aplicarRemitoEnPedidos(base);
+
+  let res;
+  try { res = await persistirRemito(base); }
+  catch (e) { pedidosPendientes = JSON.parse(snapshotPedidos); mostrarAviso('No se pudo guardar el remito. Probá de nuevo.', 'error'); return; }
+  if (res.error === 'dup') {
+    pedidosPendientes = JSON.parse(snapshotPedidos);
+    mostrarAviso('Ya existe el remito N° ' + numero + ' en la cuenta ' + cuenta + ' (' + (res.dup.cliente || '') + '). Usá otro número.', 'error');
+    return;
+  }
+  await guardarPedidosPendientesEnStorage();
+  if (cuenta === 1 && cfg.hasta) {
+    const quedan = Number(cfg.hasta) - numero;
+    if (quedan >= 0 && quedan <= 50) mostrarAviso('Atención: quedan ' + quedan + ' números en el talonario de la cuenta 1.', 'error');
+  }
+  cerrarFormularioRemito();
+  refreshTodasLasVistas();
+  mostrarAviso('Remito ' + formatNumeroRemito(base) + ' guardado.', null, true);
+  if (conPdf) descargarPdfRemito(base.id);
+}
+
+async function anularRemito(id) {
+  const r = remitos.find(x => x.id === id);
+  if (!r || r.estado === 'anulado') return;
+  if (r.factura_id) { mostrarAviso('Este remito ya fue facturado: anulá primero la factura.', 'error'); return; }
+  const ok = await confirmarAccion(`¿Anular el remito ${formatNumeroRemito(r)}? Las cantidades vuelven al saldo de los pedidos y el número queda usado (no se puede reutilizar).`);
+  if (!ok) return;
+  let motivo = '';
+  try { motivo = (window.prompt('Motivo de la anulación (opcional):', '') || '').trim(); } catch (e) { motivo = ''; }
+  const snapshotPedidos = JSON.stringify(pedidosPendientes);
+  revertirRemitoEnPedidos(r);
+  const copia = Object.assign({}, r, {estado: 'anulado', motivo_anulacion: motivo, anulado_por: (window.currentUser && window.currentUser.email) || '', anulado_ts: Date.now(), modificado_ts: Date.now()});
+  try { await persistirRemito(copia); }
+  catch (e) { pedidosPendientes = JSON.parse(snapshotPedidos); mostrarAviso('No se pudo anular el remito. Probá de nuevo.', 'error'); return; }
+  await guardarPedidosPendientesEnStorage();
+  refreshTodasLasVistas();
+  mostrarAviso('Remito ' + formatNumeroRemito(r) + ' anulado.', null, true);
+}
+
+// ---------- PDF ----------
+function descargarPdfRemito(id) {
+  const r = remitos.find(x => x.id === id);
+  if (!r) return;
+  try {
+    const doc = construirPdfRemito(r, remitosConfig);
+    doc.save('Remito_' + formatNumeroRemito(r) + '.pdf');
+  } catch (e) {
+    mostrarAviso(e.message || 'No se pudo generar el PDF.', 'error');
+  }
+}
+
+function remitoDePrueba() {
+  return {
+    fecha: toISODate(new Date()), cliente: 'CLIENTE DE PRUEBA S.A.',
+    domicilio: 'Av. Siempreviva 742 - Barrio Centro, Ciudad Autónoma de Buenos Aires (1000)',
+    iva: 'Responsable Inscripto', cuit: '30-12345678-9',
+    items: [
+      {cantidad: 200, pieza: '17/2', producto: 'PUNT. ACERO C/PESTAÑA 75-7'},
+      {cantidad: 700, pieza: '17/2', producto: 'PUNT. ACERO C/PESTAÑA 75-8'},
+      {cantidad: 32, pieza: '2/5/1', producto: 'PUNTERA DE VISITA'}
+    ],
+    bultos: 1, kilos: 25.5, valor: '', imprimir_leyenda: true,
+    transportista: {nombre: (remitosConfig && remitosConfig.transp) || 'Transporte Propio', domicilio: 'Domicilio del transportista', cuit: '30-00000000-0'}
+  };
+}
+
+function imprimirPruebaRemito(conGrilla) {
+  try {
+    const cfg = leerConfigRemitosDelFormulario();
+    const doc = construirPdfRemito(remitoDePrueba(), cfg, {grilla: conGrilla});
+    doc.save(conGrilla ? 'Hoja_de_prueba_remito_con_grilla.pdf' : 'Remito_de_prueba.pdf');
+  } catch (e) {
+    mostrarAviso(e.message || 'No se pudo generar el PDF.', 'error');
+  }
+}
+
+// ---------- Configuración ----------
+function abrirConfigRemitos() {
+  const c = remitosConfig || normalizarConfigRemitos(null);
+  $('rc1_pv').value = c.c1.pv || '';
+  $('rc1_primero').value = c.c1.primero || '';
+  $('rc1_desde').value = c.c1.desde || '';
+  $('rc1_hasta').value = c.c1.hasta || '';
+  $('rc1_cai').value = c.c1.cai || '';
+  $('rc1_vto').value = c.c1.vto_cai || '';
+  $('rc2_pv').value = c.c2.pv || '';
+  $('rc2_primero').value = c.c2.primero || '';
+  $('rc_dx').value = c.dx || '';
+  $('rc_dy').value = c.dy || '';
+  $('rc_leyenda').value = c.leyenda || '';
+  $('rc_transp').value = c.transp || '';
+  $('remitoPanel').classList.remove('open');
+  $('remConfigPanel').classList.add('open');
+}
+
+function leerConfigRemitosDelFormulario() {
+  const n = (id) => { const v = parseInt($(id).value, 10); return isNaN(v) ? null : v; };
+  return normalizarConfigRemitos({
+    c1: {pv: $('rc1_pv').value.trim() || '00001', primero: n('rc1_primero'), desde: n('rc1_desde'), hasta: n('rc1_hasta'), cai: $('rc1_cai').value.trim(), vto_cai: $('rc1_vto').value || null},
+    c2: {pv: $('rc2_pv').value.trim() || '00002', primero: n('rc2_primero')},
+    dx: parseFloat($('rc_dx').value) || 0,
+    dy: parseFloat($('rc_dy').value) || 0,
+    leyenda: $('rc_leyenda').value.trim(),
+    transp: $('rc_transp').value.trim()
+  });
+}
+
+async function guardarConfigRemitos() {
+  const cfg = leerConfigRemitosDelFormulario();
+  if (cfg.c1.desde && cfg.c1.hasta && cfg.c1.desde > cfg.c1.hasta) { mostrarAviso('El talonario tiene el “desde” mayor que el “hasta”.', 'error'); return; }
+  try {
+    await window.storage.set('config_remitos', JSON.stringify(cfg), false);
+  } catch (e) { mostrarAviso('No se pudo guardar la configuración.', 'error'); return; }
+  remitosConfig = cfg;
+  $('remConfigPanel').classList.remove('open');
+  renderRemitos();
+  mostrarAviso('Configuración de remitos guardada.', null, true);
+}
+
+// ---------- Listado ----------
+function remitoCardHTML(r) {
+  const anulado = r.estado === 'anulado';
+  const unidades = (r.items || []).reduce((s, it) => s + (Number(it.cantidad) || 0), 0);
+  const pedidosTxt = r.sin_pedido_urgencia ? 'Sin pedido (urgencia)' :
+    (r.pedidos_origen || []).map(o => (o.numero ? 'Pedido N° ' + o.numero : 'Pedido') + ' del ' + formatFecha(o.fecha) + (o.oc ? ' · OC ' + o.oc : '') + (o.completo ? ' (completo)' : ' (parcial)')).join(' · ');
+  return `
+    <div class="pedido-card ${anulado ? 'anulado' : ''}" style="${anulado ? 'opacity:.6;border-left-color:var(--orange);' : (Number(r.cuenta) === 2 ? 'border-left-color:var(--blue);' : '')}">
+      <div class="pedido-card-header">
+        <div class="pedido-card-titulo">
+          <span class="cliente">${escapeHtml(r.cliente || '')}</span>
+          <span class="factura">N° ${escapeHtml(formatNumeroRemito(r))}</span>
+          <span class="badge ${Number(r.cuenta) === 2 ? 'porvencer' : 'pagado'}">Cuenta ${r.cuenta}</span>
+          ${anulado ? '<span class="badge vencido">Anulado</span>' : (r.factura_id ? '<span class="badge pagado">Facturado</span>' : '')}
+        </div>
+        <span class="pedido-card-cantidad">${formatCantidad(unidades)} u.</span>
+      </div>
+      <table class="ped-items"><thead><tr><th class="num">Cant.</th><th>Pieza N°</th><th>Detalle</th></tr></thead>
+        <tbody>${(r.items || []).map(it => `<tr><td class="num">${formatCantidadRemito(it.cantidad)}</td><td>${escapeHtml(it.pieza || '')}</td><td>${escapeHtml(it.producto)}</td></tr>`).join('')}</tbody></table>
+      <div class="row-dates"><span>Fecha: ${formatFecha(r.fecha)}</span><span>${escapeHtml(pedidosTxt)}</span>${r.creado_por ? `<span>Cargó: ${escapeHtml(r.creado_por)}</span>` : ''}</div>
+      ${anulado ? `<div class="nota">⛔ Anulado${r.motivo_anulacion ? ': ' + escapeHtml(r.motivo_anulacion) : ''}</div>` : ''}
+      ${r.notas ? `<div class="nota">📝 ${escapeHtml(r.notas)}</div>` : ''}
+      <div class="row-actions" style="margin-top:8px;">
+        ${anulado ? '' : `<button class="iconbtn" onclick="descargarPdfRemito('${r.id}')">📄 PDF</button>
+        <button class="iconbtn" onclick="editarRemito('${r.id}')">Editar</button>
+        <button class="iconbtn danger" onclick="anularRemito('${r.id}')">Anular</button>`}
+      </div>
+    </div>`;
+}
+
+function remitosFiltrados() {
+  let lista = remitos.filter(r => {
+    if (filtroRemitos === 'c1') return Number(r.cuenta) === 1 && r.estado !== 'anulado';
+    if (filtroRemitos === 'c2') return Number(r.cuenta) === 2 && r.estado !== 'anulado';
+    if (filtroRemitos === 'anulado') return r.estado === 'anulado';
+    return true;
+  });
+  const q = busquedaRemitos.trim().toLowerCase();
+  if (q) {
+    lista = lista.filter(r =>
+      (r.cliente || '').toLowerCase().includes(q) ||
+      formatNumeroRemito(r).toLowerCase().includes(q) ||
+      String(r.numero).includes(q) ||
+      (r.items || []).some(it => (it.producto || '').toLowerCase().includes(q)) ||
+      (r.pedidos_origen || []).some(o => (o.numero || '').toLowerCase().includes(q) || (o.oc || '').toLowerCase().includes(q)));
+  }
+  lista.sort((a, b) => (Number(b.cuenta) === Number(a.cuenta) ? 0 : Number(a.cuenta) - Number(b.cuenta)) || (Number(b.numero) - Number(a.numero)));
+  return lista;
+}
+
+function renderRemitos() {
+  if (!remitosConfig) remitosConfig = normalizarConfigRemitos(null);
+  renderAvisosRemitos();
+  if (remitos.length === 0) {
+    $('contenidoRemitos').innerHTML = `<div class="empty"><h3>Todavía no emitiste ningún remito</h3><p>Antes de empezar, revisá la numeración en “⚙️ Numeración e impresión”.</p><button class="primary" onclick="abrirFormularioRemito()">+ Nuevo remito</button></div>`;
+    return;
+  }
+  const lista = remitosFiltrados();
+  $('contenidoRemitos').innerHTML = lista.length ? lista.map(remitoCardHTML).join('') : '<div class="empty"><h3>No hay resultados</h3></div>';
+}
+
+$('btnNuevoRemito').addEventListener('click', abrirFormularioRemito);
+$('btnCancelarRemito').addEventListener('click', cerrarFormularioRemito);
+$('btnGuardarRemito').addEventListener('click', () => guardarRemito(false));
+$('btnGuardarRemitoPdf').addEventListener('click', () => guardarRemito(true));
+$('btnAgregarItemRemito').addEventListener('click', agregarItemRemito);
+$('btnRemConfig').addEventListener('click', abrirConfigRemitos);
+$('btnRemConfigCancelar').addEventListener('click', () => $('remConfigPanel').classList.remove('open'));
+$('btnRemConfigGuardar').addEventListener('click', guardarConfigRemitos);
+$('btnRemPruebaGrilla').addEventListener('click', () => imprimirPruebaRemito(true));
+$('btnRemPrueba').addEventListener('click', () => imprimirPruebaRemito(false));
+$('buscadorRemitos').addEventListener('input', (e) => { busquedaRemitos = e.target.value; renderRemitos(); });
+$('filtrosRemitos').addEventListener('click', (e) => {
+  if (!e.target.classList.contains('chip')) return;
+  document.querySelectorAll('#filtrosRemitos .chip').forEach(c => c.classList.remove('active'));
+  e.target.classList.add('active');
+  filtroRemitos = e.target.dataset.filter;
+  renderRemitos();
+});
+$('rem_cuenta').addEventListener('change', () => {
+  if (!editandoRemitoId) { const sig = siguienteNumeroRemito(Number($('rem_cuenta').value)); $('rem_numero').value = sig !== null ? sig : ''; }
+  actualizarInfoNumeroRemito();
+});
+$('rem_numero').addEventListener('input', actualizarInfoNumeroRemito);
+$('rem_cliente').addEventListener('change', () => {
+  // Al cambiar de cliente se sueltan los pedidos del anterior
+  remPedidosSel = new Set();
+  remItems = remItems.filter(it => !it.pedido_id);
+  if (remItems.length === 0) remItems.push(itemRemitoVacio());
+  completarDatosClienteRemito();
+  renderRemPedidos();
+  renderRemItems();
+});
+$('rem_urgencia').addEventListener('change', () => {
+  if ($('rem_urgencia').checked) {
+    remPedidosSel = new Set();
+    remItems = remItems.filter(it => !it.pedido_id);
+    if (remItems.length === 0) remItems.push(itemRemitoVacio());
+    renderRemItems();
+  }
+  renderRemPedidos();
+});
+$('rem_leyenda').addEventListener('change', () => { remLeyendaManual = true; });
+
 
 // ===================== FLUJO DE CAJA =====================
 
@@ -7405,6 +8374,7 @@ function clienteCardHTML(c) {
         <div class="cliente-contacto">
           ${c.telefono ? `<span>📞 ${escapeHtml(c.telefono)}</span>` : ''}
           ${c.cuit ? `<span>CUIT ${escapeHtml(c.cuit)}</span>` : ''}
+          ${c.domicilio ? `<span>${escapeHtml(c.domicilio)}</span>` : ''}
           ${c.email ? `<span>${escapeHtml(c.email)}</span>` : ''}
         </div>
         ${c.notas ? `<div class="cliente-notas">📝 ${escapeHtml(c.notas)}</div>` : ''}
@@ -7460,6 +8430,9 @@ function abrirFormularioCliente(id) {
     $('c_nombre').value = c.nombre;
     $('c_telefono').value = c.telefono || '';
     $('c_cuit').value = c.cuit || '';
+    $('c_iva').value = c.condicion_iva || '';
+    $('c_codigo').value = c.codigo || '';
+    $('c_domicilio').value = c.domicilio || '';
     $('c_email').value = c.email || '';
     $('c_condicion_habitual').value = c.condicion_habitual || '';
     $('c_metodo_habitual').value = c.metodo_habitual || '';
@@ -7471,6 +8444,9 @@ function abrirFormularioCliente(id) {
     $('c_nombre').value = '';
     $('c_telefono').value = '';
     $('c_cuit').value = '';
+    $('c_iva').value = '';
+    $('c_codigo').value = '';
+    $('c_domicilio').value = '';
     $('c_email').value = '';
     $('c_condicion_habitual').value = '';
     $('c_metodo_habitual').value = '';
@@ -7503,6 +8479,9 @@ async function guardarCliente() {
     nombre,
     telefono: $('c_telefono').value.trim(),
     cuit: $('c_cuit').value.trim(),
+    condicion_iva: $('c_iva').value,
+    codigo: $('c_codigo').value.trim(),
+    domicilio: $('c_domicilio').value.trim(),
     email: $('c_email').value.trim(),
     condicion_habitual: $('c_condicion_habitual').value,
     metodo_habitual: $('c_metodo_habitual').value,
@@ -7940,6 +8919,19 @@ function activarSincronizacionEnVivo() {
     } catch (e) { /* dato inválido, se ignora este cambio */ }
   });
 
+  window.storage.watch('remitos', (value) => {
+    if (value == null) return;
+    try {
+      remitos = JSON.parse(value);
+      if ($('viewRemitos').style.display !== 'none' && !$('remitoPanel').classList.contains('open')) renderRemitos();
+    } catch (e) { /* noop */ }
+  });
+
+  window.storage.watch('config_remitos', (value) => {
+    if (value == null) return;
+    try { remitosConfig = normalizarConfigRemitos(JSON.parse(value)); } catch (e) { /* noop */ }
+  });
+
   window.storage.watch('clientes', (value) => {
     if (value == null) return;
     try {
@@ -8306,6 +9298,7 @@ $('loginForm').addEventListener('submit', async (e) => {
   await cargarEgresos();
   await cargarFlujoConfig();
   await cargarStock();
+  await cargarRemitos();
   renderHeaderResumen();
   activarSincronizacionEnVivo();
   await verificarBackupAutomaticoDiario();
