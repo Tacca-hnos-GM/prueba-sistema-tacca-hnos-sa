@@ -1126,6 +1126,25 @@
     font-size:13px;
     background:#fff;
   }
+  .item-producto-head{display:flex;gap:8px;font-size:11.5px;color:var(--text-muted);margin-bottom:3px;padding-right:2px;}
+  .item-producto-row .ped-sub{flex:0 0 auto;font-size:11.5px;color:var(--text-muted);font-family:var(--font-mono);min-width:70px;text-align:right;}
+  .ped-items{width:100%;border-collapse:collapse;margin:6px 0 2px;font-size:13px;}
+  .ped-items th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);font-weight:600;text-align:left;padding:4px 8px;border-bottom:1px solid var(--hairline);}
+  .ped-items td{padding:5px 8px;border-bottom:1px solid var(--hairline);}
+  .ped-items th.num,.ped-items td.num{text-align:right;font-family:var(--font-mono);white-space:nowrap;}
+  .ped-items tr.cero td{color:var(--text-muted);text-decoration:line-through;}
+  .sin-precio{color:var(--orange);font-size:11.5px;}
+  .saldo-resumen{display:flex;gap:18px;flex-wrap:wrap;margin:4px 0 12px;font-size:13px;color:var(--text-muted);}
+  .saldo-resumen b{color:var(--text);font-family:var(--font-mono);}
+  details.saldo-cliente{background:var(--card);border:1px solid var(--hairline);border-left:5px solid var(--amber);border-radius:8px;margin-bottom:10px;}
+  details.saldo-cliente>summary{cursor:pointer;padding:11px 14px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;list-style:none;}
+  details.saldo-cliente>summary::-webkit-details-marker{display:none;}
+  details.saldo-cliente>summary .cliente{font-weight:600;font-size:15px;}
+  details.saldo-cliente>summary .tot{font-family:var(--font-mono);font-size:13px;color:var(--text-muted);}
+  .saldo-pedido{padding:8px 14px 10px;border-top:1px solid var(--hairline);}
+  .saldo-pedido-head{display:flex;gap:12px;flex-wrap:wrap;align-items:baseline;font-size:13px;}
+  .saldo-pedido-head .num-ped{font-family:var(--font-mono);font-weight:700;}
+  .saldo-pedido-head .viejo{color:var(--orange);font-weight:600;}
   .item-producto-del{
     background:transparent;
     border:none;
@@ -2086,11 +2105,17 @@
   <div id="viewPedidos" style="display:none;">
     <div class="toolbar">
       <button class="primary" id="btnNuevoPedido">+ Nuevo pedido</button>
-      <input type="text" id="buscadorPedidos" placeholder="Buscar por cliente o producto...">
+      <input type="text" id="buscadorPedidos" placeholder="Buscar por cliente, producto, N° de pedido u OC...">
+      <div class="chip-group" id="modoPedidos">
+        <span class="chip active" data-modo="lista">Pedidos</span>
+        <span class="chip" data-modo="saldos">Saldos por cliente</span>
+      </div>
+    </div>
+    <div class="toolbar" id="toolbarFiltrosPedidos" style="margin-top:-4px;">
       <div class="chip-group" id="filtrosPedidos">
         <span class="chip active" data-filter="todos">Todos</span>
-        <span class="chip" data-filter="pendiente">Pendientes de facturar</span>
-        <span class="chip" data-filter="facturado">Ya facturados</span>
+        <span class="chip" data-filter="pendiente">Con saldo pendiente</span>
+        <span class="chip" data-filter="facturado">Cerrados</span>
       </div>
     </div>
 
@@ -2107,30 +2132,19 @@
           <input type="text" id="ped_numero" placeholder="Ej: 00123" maxlength="5" style="font-family:var(--font-mono);letter-spacing:.05em;">
         </div>
         <div class="field">
+          <label>N° de orden de compra (OC)</label>
+          <input type="text" id="ped_oc" placeholder="La del cliente, si la tiene" maxlength="30" style="font-family:var(--font-mono);">
+        </div>
+        <div class="field">
           <label>Cliente</label>
           <input type="text" id="ped_cliente" list="listaClientes" placeholder="Razón social del cliente">
         </div>
         <div class="form-section-label">Productos</div>
         <div class="field full">
+          <div class="item-producto-head"><span style="flex:2;">Producto</span><span style="flex:1;">Cantidad</span><span style="flex:1;">Precio unit. (sin IVA)</span><span style="width:30px;"></span></div>
           <div id="itemsProductosPedidoContainer"></div>
           <button type="button" class="ghost" id="btnAgregarItemProductoPedido" style="margin-top:6px;">+ Agregar producto</button>
-        </div>
-        <div class="form-section-label">Condiciones de pago</div>
-        <div class="field">
-          <label>Condición de pago</label>
-          <select id="ped_condicion">
-            <option value="Contado">Contado</option>
-            <option value="Cuenta corriente">Cuenta corriente</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Método de pago</label>
-          <select id="ped_metodo">
-            <option value="Transferencia">Transferencia</option>
-            <option value="Efectivo">Efectivo</option>
-            <option value="Cheque">Cheque</option>
-            <option value="Otro">Otro</option>
-          </select>
+          <div id="pedTotalForm" style="margin-top:8px;font-size:13px;color:var(--text-muted);"></div>
         </div>
         <div class="field full">
           <label>Notas (opcional)</label>
@@ -3378,8 +3392,6 @@ function aplicarModalidadPagoClientePedido() {
   if (!nombre) return;
   const cliente = clientes.find(c => c.nombre.trim().toLowerCase() === nombre.toLowerCase());
   if (!cliente) return;
-  if (cliente.condicion_habitual) $('ped_condicion').value = cliente.condicion_habitual;
-  if (cliente.metodo_habitual) $('ped_metodo').value = cliente.metodo_habitual;
   if (cliente.notas && !$('ped_notas').value.trim()) $('ped_notas').value = cliente.notas;
 }
 
@@ -3474,6 +3486,7 @@ function toggleVentaPedidoLink(pedidoId, checked) {
         itemsProductosForm = [];
       }
       pedido.productos.forEach((it, idx) => {
+        if ((Number(it.cantidad) || 0) <= 0) return;
         itemsProductosForm.push({
           producto: it.producto || '',
           cantidad: it.cantidad != null ? it.cantidad : '',
@@ -3490,18 +3503,23 @@ function toggleVentaPedidoLink(pedidoId, checked) {
   renderItemsProductos();
 }
 
-function productosRestantesPedido(pedido) {
-  // Lo que queda por facturar de un pedido según las filas cargadas en el formulario de venta
-  const restantes = [];
-  pedido.productos.forEach((itemPedido, idx) => {
+function restantesPorItemPedido(pedido) {
+  // Saldo que queda de cada producto del pedido según las filas cargadas en el formulario de venta
+  return pedido.productos.map((itemPedido, idx) => {
     const filasVenta = itemsProductosForm.filter(it => it.origenPedidoId === pedido.id && it.origenPedidoIdx === idx);
     const facturado = filasVenta.reduce((s, it) => {
       const c = it.cantidad === '' || it.cantidad == null ? 0 : parseFloat(it.cantidad);
       return s + (isNaN(c) ? 0 : c);
     }, 0);
     const pedida = itemPedido.cantidad || 0;
-    const restante = Math.max(0, Math.round((pedida - facturado) * 100) / 100);
-    if (restante > 0) restantes.push({producto: itemPedido.producto, cantidad: restante});
+    return Math.max(0, Math.round((pedida - facturado) * 100) / 100);
+  });
+}
+
+function productosRestantesPedido(pedido) {
+  const restantes = [];
+  restantesPorItemPedido(pedido).forEach((restante, idx) => {
+    if (restante > 0) restantes.push({producto: pedido.productos[idx].producto, cantidad: restante});
   });
   return restantes;
 }
@@ -3513,11 +3531,12 @@ async function reconciliarPedidosVinculados() {
   pedidosAfectados.forEach(pedidoId => {
     const pedido = pedidosPendientes.find(p => p.id === pedidoId);
     if (!pedido) return;
-    const nuevosProductos = productosRestantesPedido(pedido);
-    if (nuevosProductos.length === 0) {
-      pedidosPendientes = pedidosPendientes.filter(p => p.id !== pedidoId);
-    } else {
-      pedido.productos = nuevosProductos;
+    const restantes = restantesPorItemPedido(pedido);
+    // El pedido NO se borra: queda con su cantidad inicial y el saldo actualizado
+    pedido.productos.forEach((it, idx) => { it.cantidad = restantes[idx]; });
+    if (restantes.every(r => r <= 0)) {
+      pedido.facturado = true;
+      if (!pedido.fecha_facturado) pedido.fecha_facturado = toISODate(new Date());
     }
   });
 
@@ -3528,39 +3547,129 @@ let itemsProductosFormPedido = [];
 let editandoPedidoId = null;
 let filtroPedidos = 'todos';
 let busquedaPedidos = '';
+let modoPedidos = 'lista';
+
+function numPed(v) {
+  if (v === '' || v == null) return null;
+  const n = parseFloat(String(v).replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
+
+function formatCantidad(n) {
+  return new Intl.NumberFormat('es-AR', {maximumFractionDigits: 2}).format(n || 0);
+}
+
+function formatPrecio(n) {
+  return new Intl.NumberFormat('es-AR', {style: 'currency', currency: 'ARS', minimumFractionDigits: 2, maximumFractionDigits: 2}).format(n);
+}
+
+function cantidadInicialItem(it) {
+  return it.cantidad_inicial != null ? it.cantidad_inicial : (it.cantidad || 0);
+}
+
+function cantidadInicialPedido(p) {
+  return (p.productos || []).reduce((s, it) => s + (Number(cantidadInicialItem(it)) || 0), 0);
+}
+
+function importeSaldoPedido(p) {
+  return (p.productos || []).reduce((s, it) => s + ((Number(it.cantidad) || 0) * (it.precio != null ? Number(it.precio) : 0)), 0);
+}
+
+function pedidoTieneSaldo(p) {
+  return !p.facturado && (p.productos || []).some(it => (Number(it.cantidad) || 0) > 0);
+}
+
+function ultimoPrecioCliente(cliente, producto) {
+  const c = (cliente || '').trim().toLowerCase();
+  const pr = (producto || '').trim().toLowerCase();
+  if (!c || !pr) return null;
+  const lista = pedidosPendientes
+    .filter(p => (p.cliente || '').trim().toLowerCase() === c && p.id !== editandoPedidoId)
+    .sort((a, b) => parseFecha(b.fecha) - parseFecha(a.fecha));
+  for (const p of lista) {
+    const it = (p.productos || []).find(x => (x.producto || '').trim().toLowerCase() === pr && x.precio != null);
+    if (it) return it.precio;
+  }
+  return null;
+}
 
 function renderItemsProductosPedido() {
-  $('itemsProductosPedidoContainer').innerHTML = itemsProductosFormPedido.map((item, idx) => `
+  $('itemsProductosPedidoContainer').innerHTML = itemsProductosFormPedido.map((item, idx) => {
+    const c = numPed(item.cantidad), pr = numPed(item.precio);
+    const sub = (c != null && pr != null) ? formatMonto(c * pr) : '';
+    return `
     <div class="item-producto-row">
-      <input type="text" list="listaProductos" placeholder="Producto" value="${escapeHtml(item.producto || '')}" oninput="actualizarItemProductoPedido(${idx}, 'producto', this.value)">
+      <input type="text" list="listaProductos" placeholder="Producto" value="${escapeHtml(item.producto || '')}" oninput="actualizarItemProductoPedido(${idx}, 'producto', this.value)" onchange="autoPrecioPedido(${idx})">
       <input type="number" placeholder="Cantidad" min="0" step="1" value="${item.cantidad != null ? item.cantidad : ''}" oninput="actualizarItemProductoPedido(${idx}, 'cantidad', this.value)">
-      ${itemsProductosFormPedido.length > 1 ? `<button type="button" class="item-producto-del" onclick="eliminarItemProductoPedido(${idx})" title="Quitar">✕</button>` : ''}
-    </div>`).join('');
+      <input type="number" id="ped_precio_${idx}" placeholder="Precio" min="0" step="0.01" value="${item.precio != null ? item.precio : ''}" oninput="actualizarItemProductoPedido(${idx}, 'precio', this.value)">
+      <span class="ped-sub" id="ped_sub_${idx}">${sub}</span>
+      ${itemsProductosFormPedido.length > 1 ? `<button type="button" class="item-producto-del" onclick="eliminarItemProductoPedido(${idx})" title="Quitar">✕</button>` : '<span style="width:30px;"></span>'}
+    </div>`;
+  }).join('');
+  actualizarTotalFormPedido();
+}
+
+function actualizarTotalFormPedido() {
+  let total = 0, unidades = 0, sinPrecio = 0;
+  itemsProductosFormPedido.forEach(it => {
+    if (!(it.producto || '').trim()) return;
+    const c = numPed(it.cantidad), pr = numPed(it.precio);
+    if (c != null) unidades += c;
+    if (c != null && pr != null) total += c * pr; else sinPrecio++;
+  });
+  $('pedTotalForm').innerHTML = `Total: <b>${formatCantidad(unidades)}</b> unidades · <b>${formatMonto(total)}</b> sin IVA${sinPrecio ? ` · <span class="sin-precio">${sinPrecio} producto${sinPrecio === 1 ? '' : 's'} sin precio</span>` : ''}`;
 }
 
 function actualizarItemProductoPedido(idx, campo, valor) {
   if (!itemsProductosFormPedido[idx]) return;
   itemsProductosFormPedido[idx][campo] = valor;
+  if (campo === 'cantidad' || campo === 'precio') {
+    const c = numPed(itemsProductosFormPedido[idx].cantidad), pr = numPed(itemsProductosFormPedido[idx].precio);
+    const el = $('ped_sub_' + idx);
+    if (el) el.textContent = (c != null && pr != null) ? formatMonto(c * pr) : '';
+  }
+  actualizarTotalFormPedido();
+}
+
+function autoPrecioPedido(idx) {
+  // Si el precio está vacío, se sugiere el último precio de ese producto para ese cliente
+  const it = itemsProductosFormPedido[idx];
+  if (!it || (it.precio !== '' && it.precio != null)) return;
+  const p = ultimoPrecioCliente($('ped_cliente').value, it.producto);
+  if (p != null) {
+    it.precio = p;
+    renderItemsProductosPedido();
+    mostrarAviso('Se completó el último precio que se le cobró a este cliente. Corregilo si cambió.', null, true);
+  }
 }
 
 function agregarItemProductoPedido() {
-  itemsProductosFormPedido.push({producto: '', cantidad: ''});
+  itemsProductosFormPedido.push({producto: '', cantidad: '', precio: '', entregado: 0});
   renderItemsProductosPedido();
 }
 
 function eliminarItemProductoPedido(idx) {
   itemsProductosFormPedido.splice(idx, 1);
-  if (itemsProductosFormPedido.length === 0) itemsProductosFormPedido.push({producto: '', cantidad: ''});
+  if (itemsProductosFormPedido.length === 0) itemsProductosFormPedido.push({producto: '', cantidad: '', precio: '', entregado: 0});
   renderItemsProductosPedido();
 }
 
 function itemsProductosDesdePedido(p) {
   if (p.productos && p.productos.length) {
-    return p.productos.map(it => ({producto: it.producto || '', cantidad: it.cantidad != null ? it.cantidad : ''}));
+    return p.productos.map(it => {
+      const inicial = cantidadInicialItem(it);
+      return {
+        producto: it.producto || '',
+        cantidad: inicial,
+        precio: it.precio != null ? it.precio : '',
+        entregado: Math.max(0, Math.round((inicial - (Number(it.cantidad) || 0)) * 100) / 100)
+      };
+    });
   }
-  return [{producto: '', cantidad: ''}];
+  return [{producto: '', cantidad: '', precio: '', entregado: 0}];
 }
 
+// Cantidad que todavía se debe entregar (saldo)
 function cantidadTotalPedido(p) {
   return (p.productos || []).reduce((s,it) => s + (it.cantidad != null && !isNaN(it.cantidad) ? Number(it.cantidad) : 0), 0);
 }
@@ -3571,11 +3680,10 @@ function abrirFormularioPedido() {
   $('pedidoFormTitulo').textContent = 'Cargar nuevo pedido';
   $('ped_fecha').value = toISODate(new Date());
   $('ped_numero').value = '';
+  $('ped_oc').value = '';
   $('ped_cliente').value = '';
-  $('ped_condicion').value = 'Contado';
-  $('ped_metodo').value = 'Transferencia';
   $('ped_notas').value = '';
-  itemsProductosFormPedido = [{producto: '', cantidad: ''}];
+  itemsProductosFormPedido = [{producto: '', cantidad: '', precio: '', entregado: 0}];
   renderItemsProductosPedido();
   $('pedidoPanel').classList.add('open');
 }
@@ -3593,9 +3701,8 @@ function editarPedido(id) {
   $('pedidoFormTitulo').textContent = 'Editar pedido';
   $('ped_fecha').value = p.fecha;
   $('ped_numero').value = p.numero || '';
+  $('ped_oc').value = p.oc || '';
   $('ped_cliente').value = p.cliente || '';
-  $('ped_condicion').value = p.condicion || 'Contado';
-  $('ped_metodo').value = p.metodo || 'Transferencia';
   $('ped_notas').value = p.notas || '';
   itemsProductosFormPedido = itemsProductosDesdePedido(p);
   renderItemsProductosPedido();
@@ -3607,36 +3714,55 @@ async function guardarPedido() {
   const cliente = $('ped_cliente').value.trim();
   const fecha = $('ped_fecha').value;
   const numero = $('ped_numero').value.trim();
+  const oc = $('ped_oc').value.trim();
   if (!cliente || !fecha) {
     mostrarAviso('Completá el cliente y la fecha del pedido.', 'error');
     return;
   }
-  const productosFinal = itemsProductosFormPedido
-    .map(it => ({
-      producto: (it.producto || '').trim(),
-      cantidad: it.cantidad === '' || it.cantidad == null ? null : parseFloat(it.cantidad)
-    }))
-    .filter(it => it.producto !== '');
+  if (numero) {
+    const dup = pedidosPendientes.find(x => x.id !== editandoPedidoId && (x.numero || '').trim() === numero);
+    if (dup) {
+      mostrarAviso('Ya existe un pedido con el N° ' + numero + ' (' + (dup.cliente || 'sin cliente') + ').', 'error');
+      return;
+    }
+  }
 
+  const productosFinal = [];
+  let errorFila = null;
+  itemsProductosFormPedido.forEach(it => {
+    const nombre = (it.producto || '').trim();
+    if (!nombre) return;
+    const cant = numPed(it.cantidad);
+    const precio = numPed(it.precio);
+    if (cant === null || cant <= 0) { errorFila = errorFila || ('Revisá la cantidad de "' + nombre + '": tiene que ser mayor a cero.'); return; }
+    if (it.precio !== '' && it.precio != null && (precio === null || precio < 0)) { errorFila = errorFila || ('Revisá el precio de "' + nombre + '".'); return; }
+    const entregado = it.entregado || 0;
+    productosFinal.push({
+      producto: nombre,
+      cantidad_inicial: cant,
+      cantidad: Math.max(0, Math.round((cant - entregado) * 100) / 100),
+      precio: precio
+    });
+  });
+  if (errorFila) { mostrarAviso(errorFila, 'error'); return; }
   if (productosFinal.length === 0) {
     mostrarAviso('Cargá al menos un producto con su cantidad.', 'error');
     return;
   }
 
-  const condicion = $('ped_condicion').value;
-  const metodo = $('ped_metodo').value;
-
+  const notas = $('ped_notas').value.trim();
   if (editandoPedidoId) {
     const p = pedidosPendientes.find(x => x.id === editandoPedidoId);
-    Object.assign(p, {cliente, fecha, numero, condicion, metodo, productos: productosFinal, notas: $('ped_notas').value.trim()});
+    Object.assign(p, {cliente, fecha, numero, oc, productos: productosFinal, notas});
   } else {
     pedidosPendientes.push({
       id: 'ped_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
-      cliente, fecha, numero, condicion, metodo,
+      cliente, fecha, numero, oc,
       productos: productosFinal,
-      notas: $('ped_notas').value.trim(),
+      notas,
       facturado: false,
-      fecha_facturado: null
+      fecha_facturado: null,
+      creado_por: (window.currentUser && window.currentUser.email) || ''
     });
   }
 
@@ -3653,57 +3779,140 @@ async function eliminarPedido(id) {
   refreshTodasLasVistas();
 }
 
+function estadoPedido(p) {
+  if (p.facturado) return {clase: 'pagado', texto: 'Cerrado'};
+  const inicial = cantidadInicialPedido(p), saldo = cantidadTotalPedido(p);
+  if (saldo <= 0) return {clase: 'pagado', texto: 'Entregado'};
+  if (saldo < inicial) return {clase: 'porvencer', texto: 'Entrega parcial'};
+  return {clase: 'vencido', texto: 'Sin entregar'};
+}
+
+function tablaItemsPedidoHTML(p, soloConSaldo) {
+  const filas = (p.productos || []).filter(it => !soloConSaldo || (Number(it.cantidad) || 0) > 0);
+  return `<table class="ped-items">
+    <thead><tr><th>Producto</th><th class="num">Cant. inicial</th><th class="num">Debe (saldo)</th><th class="num">Precio venta</th><th class="num">Importe saldo</th></tr></thead>
+    <tbody>${filas.map(it => {
+      const saldo = Number(it.cantidad) || 0;
+      const pr = it.precio != null ? Number(it.precio) : null;
+      return `<tr class="${saldo <= 0 ? 'cero' : ''}">
+        <td>${escapeHtml(it.producto || '')}</td>
+        <td class="num">${formatCantidad(cantidadInicialItem(it))}</td>
+        <td class="num"><b>${formatCantidad(saldo)}</b></td>
+        <td class="num">${pr != null ? formatPrecio(pr) : '<span class="sin-precio">sin precio</span>'}</td>
+        <td class="num">${pr != null ? formatMonto(saldo * pr) : '—'}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
 function pedidoCardHTML(p) {
-  const cantidad = cantidadTotalPedido(p);
+  const est = estadoPedido(p);
+  const saldo = cantidadTotalPedido(p);
   return `
-    <div class="pedido-card ${p.facturado ? 'facturado' : ''}">
+    <div class="pedido-card ${p.facturado || saldo <= 0 ? 'facturado' : ''}">
       <div class="pedido-card-header">
         <div class="pedido-card-titulo">
           <span class="cliente">${escapeHtml(p.cliente || 'Sin cliente')}</span>
           ${p.numero ? `<span class="factura">N° ${escapeHtml(p.numero)}</span>` : ''}
-          <span class="badge ${p.facturado ? 'pagado' : 'porvencer'}">${p.facturado ? 'Facturado' : 'Pendiente de facturar'}</span>
+          ${p.oc ? `<span class="factura">OC ${escapeHtml(p.oc)}</span>` : ''}
+          <span class="badge ${est.clase}">${est.texto}</span>
         </div>
-        <span class="pedido-card-cantidad">${cantidad} ítems</span>
+        <span class="pedido-card-cantidad">Debe: ${formatCantidad(p.facturado ? 0 : saldo)} de ${formatCantidad(cantidadInicialPedido(p))}</span>
       </div>
-      <div class="producto">${escapeHtml(productosResumen(p))}</div>
+      ${tablaItemsPedidoHTML(p, false)}
       <div class="row-dates">
         <span>Pedido: ${formatFecha(p.fecha)}</span>
-        ${p.facturado ? `<span>Facturado: ${formatFecha(p.fecha_facturado)}</span>` : ''}
-        ${p.condicion || p.metodo ? `<span>${escapeHtml(p.condicion || '')}${p.condicion && p.metodo ? ' · ' : ''}${escapeHtml(p.metodo || '')}</span>` : ''}
+        ${p.facturado && p.fecha_facturado ? `<span>Cerrado: ${formatFecha(p.fecha_facturado)}</span>` : ''}
       </div>
       ${p.notas ? `<div class="nota">📝 ${escapeHtml(p.notas)}</div>` : ''}
       <div class="row-actions" style="margin-top:8px;">
-        ${!p.facturado ? `<button class="iconbtn" onclick="marcarPedidoFacturado('${p.id}')">Marcar como facturado</button>` : ''}
+        ${!p.facturado ? `<button class="iconbtn" onclick="cerrarPedido('${p.id}')">Cerrar pedido</button>` : `<button class="iconbtn" onclick="reabrirPedido('${p.id}')">Reabrir</button>`}
         <button class="iconbtn" onclick="editarPedido('${p.id}')">Editar</button>
         <button class="iconbtn danger" onclick="eliminarPedido('${p.id}')">Eliminar</button>
       </div>
     </div>`;
 }
 
+function coincideBusquedaPedido(p, q) {
+  return (p.cliente || '').toLowerCase().includes(q) ||
+    (p.numero || '').toLowerCase().includes(q) ||
+    (p.oc || '').toLowerCase().includes(q) ||
+    (p.productos || []).some(it => (it.producto || '').toLowerCase().includes(q));
+}
+
 function pedidosFiltrados() {
   let lista = pedidosPendientes.filter(p => {
-    if (filtroPedidos === 'pendiente') return !p.facturado;
-    if (filtroPedidos === 'facturado') return !!p.facturado;
+    if (filtroPedidos === 'pendiente') return pedidoTieneSaldo(p);
+    if (filtroPedidos === 'facturado') return !pedidoTieneSaldo(p);
     return true;
   });
   if (busquedaPedidos.trim()) {
     const q = busquedaPedidos.trim().toLowerCase();
-    lista = lista.filter(p =>
-      (p.cliente || '').toLowerCase().includes(q) ||
-      (p.numero || '').toLowerCase().includes(q) ||
-      (p.productos || []).some(it => (it.producto || '').toLowerCase().includes(q))
-    );
+    lista = lista.filter(p => coincideBusquedaPedido(p, q));
   }
   lista.sort((a,b) => parseFecha(b.fecha) - parseFecha(a.fecha));
   return lista;
 }
 
+function renderSaldos() {
+  const q = busquedaPedidos.trim().toLowerCase();
+  const clientes = new Map();
+  pedidosPendientes.forEach(p => {
+    if (!pedidoTieneSaldo(p)) return;
+    if (q && !coincideBusquedaPedido(p, q)) return;
+    const clave = (p.cliente || 'Sin cliente').trim().toLowerCase();
+    if (!clientes.has(clave)) clientes.set(clave, {nombre: p.cliente || 'Sin cliente', pedidos: []});
+    clientes.get(clave).pedidos.push(p);
+  });
+  if (clientes.size === 0) {
+    $('contenidoPedidos').innerHTML = `<div class="empty"><h3>${q ? 'No hay resultados' : 'No hay saldos pendientes'}</h3><p>${q ? '' : 'Todos los pedidos cargados están entregados o cerrados.'}</p></div>`;
+    return;
+  }
+  const lista = Array.from(clientes.values()).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  let totUnidades = 0, totImporte = 0, totPedidos = 0, sinPrecio = 0;
+  const hoyStr = toISODate(new Date());
+  const html = lista.map(c => {
+    c.pedidos.sort((a, b) => parseFecha(a.fecha) - parseFecha(b.fecha));
+    const unid = c.pedidos.reduce((s, p) => s + cantidadTotalPedido(p), 0);
+    const imp = c.pedidos.reduce((s, p) => s + importeSaldoPedido(p), 0);
+    c.pedidos.forEach(p => (p.productos || []).forEach(it => { if ((Number(it.cantidad) || 0) > 0 && it.precio == null) sinPrecio++; }));
+    totUnidades += unid; totImporte += imp; totPedidos += c.pedidos.length;
+    return `<details class="saldo-cliente" ${q || lista.length <= 6 ? 'open' : ''}>
+      <summary><span class="cliente">${escapeHtml(c.nombre)}</span>
+        <span class="tot">${c.pedidos.length} pedido${c.pedidos.length === 1 ? '' : 's'} · ${formatCantidad(unid)} u. · ${formatMonto(imp)} sin IVA</span></summary>
+      ${c.pedidos.map(p => {
+        const dias = diasEntreFechas(p.fecha, hoyStr);
+        return `<div class="saldo-pedido">
+          <div class="saldo-pedido-head">
+            <span class="num-ped">${p.numero ? 'Pedido N° ' + escapeHtml(p.numero) : 'Pedido sin número'}</span>
+            <span>${formatFecha(p.fecha)}</span>
+            ${p.oc ? `<span>OC ${escapeHtml(p.oc)}</span>` : ''}
+            <span class="${dias !== null && dias > 30 ? 'viejo' : ''}">hace ${dias === null ? '?' : dias} día${dias === 1 ? '' : 's'}</span>
+            <button class="iconbtn" onclick="editarPedido('${p.id}')" style="margin-left:auto;">Editar</button>
+          </div>
+          ${tablaItemsPedidoHTML(p, true)}
+          ${p.notas ? `<div class="nota">📝 ${escapeHtml(p.notas)}</div>` : ''}
+        </div>`;
+      }).join('')}
+    </details>`;
+  }).join('');
+  $('contenidoPedidos').innerHTML = `
+    <div class="saldo-resumen">
+      <span>Clientes con saldo: <b>${lista.length}</b></span>
+      <span>Pedidos abiertos: <b>${totPedidos}</b></span>
+      <span>Unidades que se deben: <b>${formatCantidad(totUnidades)}</b></span>
+      <span>Importe pendiente (sin IVA): <b>${formatMonto(totImporte)}</b></span>
+      ${sinPrecio ? `<span class="sin-precio">${sinPrecio} producto${sinPrecio === 1 ? '' : 's'} sin precio</span>` : ''}
+    </div>` + html;
+}
+
 function renderPedidos() {
+  $('toolbarFiltrosPedidos').style.display = modoPedidos === 'lista' ? '' : 'none';
+  if (modoPedidos === 'saldos') { renderSaldos(); return; }
   if (pedidosPendientes.length === 0) {
     $('contenidoPedidos').innerHTML = `
       <div class="empty">
         <h3>Todavía no cargaste ningún pedido</h3>
-        <p>Cargá acá los pedidos confirmados antes de convertirlos en factura.</p>
+        <p>Cargá acá los pedidos de tus clientes con su orden de compra y precios.</p>
         <button class="primary" onclick="abrirFormularioPedido()">+ Nuevo pedido</button>
       </div>`;
     return;
@@ -3716,11 +3925,24 @@ function renderPedidos() {
   $('contenidoPedidos').innerHTML = lista.map(pedidoCardHTML).join('');
 }
 
-async function marcarPedidoFacturado(id) {
+async function cerrarPedido(id) {
   const p = pedidosPendientes.find(x => x.id === id);
   if (!p) return;
+  if (cantidadTotalPedido(p) > 0) {
+    const ok = await confirmarAccion('Este pedido todavía tiene saldo pendiente. Si lo cerrás, el saldo deja de aparecer como deuda de entrega. ¿Cerrarlo igual?');
+    if (!ok) return;
+  }
   p.facturado = true;
   p.fecha_facturado = toISODate(new Date());
+  await guardarPedidosPendientesEnStorage();
+  refreshTodasLasVistas();
+}
+
+async function reabrirPedido(id) {
+  const p = pedidosPendientes.find(x => x.id === id);
+  if (!p) return;
+  p.facturado = false;
+  p.fecha_facturado = null;
   await guardarPedidosPendientesEnStorage();
   refreshTodasLasVistas();
 }
@@ -4187,6 +4409,13 @@ $('btnAgregarItemProductoPedido').addEventListener('click', agregarItemProductoP
 $('btnCancelarPedido').addEventListener('click', cerrarFormularioPedido);
 $('btnGuardarPedido').addEventListener('click', guardarPedido);
 $('buscadorPedidos').addEventListener('input', (e) => { busquedaPedidos = e.target.value; renderPedidos(); });
+$('modoPedidos').addEventListener('click', (e) => {
+  if (!e.target.classList.contains('chip')) return;
+  document.querySelectorAll('#modoPedidos .chip').forEach(c => c.classList.remove('active'));
+  e.target.classList.add('active');
+  modoPedidos = e.target.dataset.modo;
+  renderPedidos();
+});
 $('filtrosPedidos').addEventListener('click', (e) => {
   if (!e.target.classList.contains('chip')) return;
   document.querySelectorAll('#filtrosPedidos .chip').forEach(c => c.classList.remove('active'));
@@ -4708,11 +4937,11 @@ function exportarRevisionPDF() {
   const itemsPendientes = totalItemsPedidosPendientes();
   const proyeccion = gestionMes.itemsVendidos + itemsPendientes;
   const diferencia = objetivoMensual ? Math.round(proyeccion - objetivoMensual) : null;
-  const pedidosPendientesHTML = pedidosPendientes.map(p => `
+  const pedidosPendientesHTML = pedidosPendientes.filter(pedidoTieneSaldo).map(p => `
     <tr>
       <td>${escapeHtml(p.cliente || '—')}</td>
-      <td>${p.cantidad}</td>
-      <td>${escapeHtml(p.nota || '—')}</td>
+      <td>${cantidadTotalPedido(p)}</td>
+      <td>${escapeHtml(p.notas || '—')}</td>
       <td>${formatFecha(p.fecha)}</td>
     </tr>`).join('');
 
@@ -4778,7 +5007,7 @@ function exportarRevisionPDF() {
       </tbody>
     </table>
 
-    ${pedidosPendientes.length > 0 ? `
+    ${pedidosPendientes.some(pedidoTieneSaldo) ? `
     <p style="font-family:var(--font-body);font-weight:700;font-size:13px;margin-top:20px;">Pedidos pendientes de facturar (detalle)</p>
     <table class="print-table">
       <thead><tr><th>Cliente</th><th>Cantidad</th><th>Nota</th><th>Cargado el</th></tr></thead>
@@ -5009,6 +5238,7 @@ function importarBackup(file) {
     aplicarCategoriasIniciales();
     if (data.stock_diario && typeof data.stock_diario === 'object' && !Array.isArray(data.stock_diario)) stockDiario = data.stock_diario;
     pedidosPendientes = listaPedidosPendientes;
+    migrarPedidosPendientes();
     egresos = listaEgresos;
     egresos.forEach(e => {
       if (e.moneda === undefined) e.moneda = 'ARS';
@@ -5333,12 +5563,17 @@ function migrarPedidosPendientes() {
     if (p.numero === undefined) p.numero = '';
     if (p.condicion === undefined) p.condicion = '';
     if (p.metodo === undefined) p.metodo = '';
+    if (p.oc === undefined) p.oc = '';
     if (!p.productos) {
       p.productos = p.cantidad != null ? [{producto: '', cantidad: p.cantidad}] : [];
       p.notas = p.nota || '';
       delete p.cantidad;
       delete p.nota;
     }
+    p.productos.forEach(it => {
+      if (it.cantidad_inicial === undefined) it.cantidad_inicial = it.cantidad != null ? it.cantidad : 0;
+      if (it.precio === undefined) it.precio = null;
+    });
   });
 }
 
@@ -6882,7 +7117,7 @@ function calcularEficienciaEntrega() {
   const hastaFacturas = new Date(t.getFullYear(), t.getMonth() + 1, 0);
 
   const pedidosEnVentana = pedidosPendientes.filter(p => enRango(p.fecha, desdePedidos, hastaPedidos));
-  const itemsHabidos = pedidosEnVentana.reduce((s,p) => s + cantidadTotalPedido(p), 0);
+  const itemsHabidos = pedidosEnVentana.reduce((s,p) => s + cantidadInicialPedido(p), 0);
 
   const ventasDelMes = ventas.filter(v => enRango(v.fecha_venta, desdeFacturas, hastaFacturas));
   const itemsFacturados = ventasDelMes.reduce((s,v) => s + (v.productos || []).reduce((s2,p) => s2 + (p.cantidad != null && !isNaN(p.cantidad) ? Number(p.cantidad) : 0), 0), 0);
@@ -8028,8 +8263,8 @@ function aplicarPermisosUI() {
   const tabs = Array.prototype.slice.call(document.querySelectorAll('#tabs .tab'));
   const permitidas = perm ? perm.tabs : [];
   tabs.forEach(t => t.classList.toggle('oculto', permitidas.indexOf(t.dataset.tab) === -1));
-  const datos = document.querySelector('.datos-dropdown');
-  if (datos) datos.style.display = (perm && perm.backup) ? '' : 'none';
+  // Exportar/importar backup: solo administrador (la papelera queda para todos).
+  ['btnExportar','btnImportar'].forEach(id => { const b = $(id); if (b) b.style.display = (perm && perm.backup) ? '' : 'none'; });
   if (perm && window.currentUser) {
     $('userChipTexto').innerHTML = `<b>${escapeHtml(perm.nombre)}</b> · ${escapeHtml(window.currentUser.email || '')}`;
     $('userChip').style.display = 'flex';
