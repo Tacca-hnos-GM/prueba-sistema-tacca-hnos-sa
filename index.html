@@ -17,12 +17,12 @@
      Esta tabla es la única fuente de verdad: define qué pestañas ve cada perfil y a qué datos
      puede acceder. Las reglas de Firebase (archivo firebase_reglas_v2.json) se generan desde esta misma tabla. */
   window.PERMISOS_ROLES = {
-    admin: {nombre: 'Administrador', tabs: ['ventas','pedidos','remitos','stock','flujocaja','calendario','deudores','bitacoraventas','clientes','productos','revision'], leer: '*', escribir: '*', backup: true},
-    ventas: {nombre: 'Ventas', tabs: ['pedidos','remitos','stock','clientes','productos'],
-      leer: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos'],
-      escribir: ['pedidos_pendientes','productos','stock_diario','clientes','papelera','notificaciones','remitos','config_remitos']},
+    admin: {nombre: 'Administrador', tabs: ['ventas','pedidos','remitos','facturas','stock','flujocaja','calendario','deudores','bitacoraventas','clientes','productos','revision'], leer: '*', escribir: '*', backup: true},
+    ventas: {nombre: 'Ventas', tabs: ['pedidos','remitos','facturas','stock','clientes','productos'],
+      leer: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos','facturas','config_facturas'],
+      escribir: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos','facturas','config_facturas']},
     tesoreria: {nombre: 'Tesorería', tabs: ['ventas','flujocaja','calendario','deudores','clientes'],
-      leer: ['ventas','clientes','productos','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones','remitos'],
+      leer: ['ventas','clientes','productos','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones','remitos','facturas'],
       escribir: ['ventas','clientes','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones']}
   };
   window.claveBasePermiso = function (key) {
@@ -61,6 +61,11 @@
         messagingSenderId: "917274597548",
         appId: "1:917274597548:web:732b9539ea0a9bfbdca709"
       };
+      if (String(firebaseConfig.apiKey).indexOf('PEGAR') === 0) {
+        msg('Falta pegar la configuración de Firebase dentro del archivo (ver instrucciones).', 'error');
+        return;
+      }
+
       // Los datos del sistema nuevo viven en 'v2/data/...', separados de la app actual ('data/...').
       const RAIZ_DATOS = 'v2/data/';
       function claveSegura(key) {
@@ -1920,6 +1925,7 @@
   @media (max-width:640px){ .stock-tabla th:nth-child(4),.stock-tabla td:nth-child(4),.stock-tabla th:nth-child(5),.stock-tabla td:nth-child(5){display:none;} .stock-tabla input{width:90px;} }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 </head>
 <body>
 
@@ -1968,6 +1974,7 @@
       <span class="tab active" data-tab="ventas">Ventas</span>
       <span class="tab" data-tab="pedidos">Pedidos</span>
       <span class="tab" data-tab="remitos">📄 Remitos</span>
+      <span class="tab" data-tab="facturas">🧾 Facturas</span>
       <span class="tab" data-tab="stock">📦 Stock diario</span>
       <span class="tab" data-tab="flujocaja">💰 Flujo de Caja</span>
       <span class="tab" data-tab="calendario">Calendario</span>
@@ -2892,6 +2899,124 @@
     </div>
 
     <div id="contenidoRemitos"><div class="loading">Cargando remitos...</div></div>
+  </div>
+
+  <div id="viewFacturas" style="display:none;">
+    <div id="facAvisos"></div>
+    <div class="toolbar">
+      <button class="primary" id="btnNuevaFactura">+ Nueva factura</button>
+      <button class="ghost" id="btnNuevaNotaCD">Nota de crédito / débito</button>
+      <input type="text" id="buscadorFacturas" placeholder="Buscar por N°, cliente, OC, remito o producto...">
+      <button class="ghost" id="btnFacConfig">⚙️ Datos de la empresa y PDF</button>
+    </div>
+    <div class="toolbar" style="margin-top:-4px;">
+      <div class="chip-group" id="filtrosFacturas">
+        <span class="chip active" data-filter="todos">Todos</span>
+        <span class="chip" data-filter="borrador">Borradores</span>
+        <span class="chip" data-filter="emitida">Emitidos</span>
+        <span class="chip" data-filter="notas">Notas de crédito/débito</span>
+        <span class="chip" data-filter="rechazada">Rechazados</span>
+      </div>
+    </div>
+
+    <div class="formpanel" id="facConfigPanel">
+      <h2>Datos de la empresa y del PDF</h2>
+      <div class="formgrid">
+        <div class="field"><label>Razón social</label><input type="text" id="fc_razon"></div>
+        <div class="field"><label>C.U.I.T.</label><input type="text" id="fc_cuit"></div>
+        <div class="field"><label>Ingresos Brutos (II.BB.)</label><input type="text" id="fc_iibb"></div>
+        <div class="field"><label>Inicio de actividades</label><input type="text" id="fc_inicio" placeholder="6/12/1966"></div>
+        <div class="field"><label>Domicilio (línea 1)</label><input type="text" id="fc_dom1"></div>
+        <div class="field"><label>Domicilio (línea 2)</label><input type="text" id="fc_dom2"></div>
+        <div class="field"><label>Teléfonos</label><input type="text" id="fc_tel"></div>
+        <div class="field"><label>Web</label><input type="text" id="fc_web"></div>
+        <div class="field"><label>Condición frente al IVA (encabezado)</label><input type="text" id="fc_condiva"></div>
+        <div class="field"><label>Punto de venta de facturas</label><input type="text" id="fc_pv" maxlength="5" style="font-family:var(--font-mono);"></div>
+        <div class="field"><label>Condición de venta por defecto</label><input type="text" id="fc_condventa" placeholder="Valores a 30 días FF"></div>
+        <div class="field"><label>Días de vencimiento por defecto</label><input type="number" id="fc_dias" min="0" step="1"></div>
+        <div class="field full">
+          <label>Logo (se imprime arriba a la izquierda)</label>
+          <input type="file" id="fc_logo_file" accept="image/png,image/jpeg">
+          <div id="fc_logo_estado" style="font-size:12.5px;color:var(--text-muted);margin-top:4px;"></div>
+        </div>
+      </div>
+      <div class="formactions" style="flex-wrap:wrap;">
+        <button class="ghost" id="btnFacPrueba">PDF de prueba</button>
+        <button class="ghost" id="btnFacConfigCancelar">Cancelar</button>
+        <button class="primary" id="btnFacConfigGuardar">Guardar</button>
+      </div>
+    </div>
+
+    <div class="formpanel" id="facturaPanel">
+      <h2 id="facturaFormTitulo">Nueva factura</h2>
+      <div class="formgrid">
+        <div class="form-section-label">Comprobante</div>
+        <div class="field">
+          <label>Tipo</label>
+          <select id="fac_tipo">
+            <option value="FA">Factura A</option>
+            <option value="NC">Nota de crédito A</option>
+            <option value="ND">Nota de débito A</option>
+          </select>
+        </div>
+        <div class="field"><label>Fecha</label><input type="date" id="fac_fecha"></div>
+        <div class="field">
+          <label>Cliente</label>
+          <input type="text" id="fac_cliente" list="listaClientes" placeholder="Razón social del cliente">
+        </div>
+        <div class="field"><label>CUIT</label><input type="text" id="fac_cuit"></div>
+        <div class="field full"><label>Domicilio</label><input type="text" id="fac_domicilio"></div>
+        <div class="field"><label>Condición frente al IVA</label><input type="text" id="fac_iva" list="listaCondIva"></div>
+        <div class="field"><label>Código de cliente</label><input type="text" id="fac_codigo" maxlength="12"></div>
+
+        <div class="form-section-label" id="facSecDetalle">Remitos a facturar</div>
+        <div class="field full" id="facRemitosField">
+          <div id="facRemitosChecklist"><span style="font-size:13px;color:var(--text-muted);">Elegí el cliente para ver sus remitos de cuenta 1 sin facturar.</span></div>
+        </div>
+        <div class="field full" id="facAsocField" style="display:none;">
+          <label>Factura asociada</label>
+          <select id="fac_asoc"></select>
+          <div id="facAsocInfo" style="font-size:12.5px;color:var(--text-muted);margin-top:4px;"></div>
+        </div>
+        <div class="field full">
+          <div class="item-producto-head"><span style="flex:3;">Descripción</span><span style="flex:1;">Cantidad</span><span style="flex:1;">Precio unit. (sin IVA)</span><span style="width:72px;">IVA</span><span style="width:96px;text-align:right;">Importe</span><span style="width:30px;"></span></div>
+          <div id="facItemsContainer"></div>
+          <button type="button" class="ghost" id="btnAgregarItemFactura" style="margin-top:6px;">+ Agregar renglón</button>
+        </div>
+
+        <div class="form-section-label">Condiciones</div>
+        <div class="field"><label>Descuento global (%)</label><input type="number" id="fac_dcto" min="0" max="100" step="0.01" placeholder="0"></div>
+        <div class="field" id="facCondField"><label>Condición de venta</label><input type="text" id="fac_cond"></div>
+        <div class="field" id="facDiasField"><label>Días de vencimiento</label><input type="number" id="fac_dias" min="0" step="1"></div>
+        <div class="field" id="facVencField"><label>Vencimiento</label><input type="date" id="fac_venc"></div>
+        <div class="field"><label>N° de OC del cliente</label><input type="text" id="fac_oc" maxlength="40"></div>
+        <div class="field full"><label id="facObsLabel">Observaciones (se imprimen)</label><input type="text" id="fac_obs" maxlength="200"></div>
+        <div class="field full" id="facTotales" style="font-size:14px;"></div>
+      </div>
+      <div class="formactions">
+        <button class="ghost" id="btnCancelarFactura">Cancelar</button>
+        <button class="ghost" id="btnGuardarFactura">Guardar borrador</button>
+        <button class="primary" id="btnGuardarFacturaPdf">Guardar y ver PDF</button>
+      </div>
+    </div>
+
+    <div class="formpanel" id="facEmisionPanel">
+      <h2 id="facEmisionTitulo">Datos de emisión</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 10px;">Hasta que el sistema esté conectado con ARCA, el N° de comprobante y el CAE se cargan a mano (los da el sistema donde hoy se emite la factura).</p>
+      <div class="formgrid">
+        <div class="field"><label>N° de comprobante</label><input type="number" id="em_numero" min="1" step="1" style="font-family:var(--font-mono);"><div id="em_numero_info" style="font-size:12px;color:var(--text-muted);margin-top:3px;"></div></div>
+        <div class="field"><label>Fecha del comprobante</label><input type="date" id="em_fecha"></div>
+        <div class="field"><label>CAE (14 dígitos)</label><input type="text" id="em_cae" maxlength="14" inputmode="numeric" style="font-family:var(--font-mono);"></div>
+        <div class="field"><label>Vencimiento del CAE</label><input type="date" id="em_cae_vto"></div>
+        <div class="field" id="emVencField"><label>Vencimiento de pago</label><input type="date" id="em_venc"></div>
+      </div>
+      <div class="formactions">
+        <button class="ghost" id="btnEmisionCancelar">Cancelar</button>
+        <button class="primary" id="btnEmisionGuardar">Marcar como emitida</button>
+      </div>
+    </div>
+
+    <div id="contenidoFacturas"><div class="loading">Cargando comprobantes...</div></div>
   </div>
 
   <div id="viewStock" style="display:none;">
@@ -4246,6 +4371,7 @@ function refreshTodasLasVistas() {
   if ($('viewBitacoraVentas').style.display !== 'none') renderBitacoraVentas();
   if ($('viewPedidos').style.display !== 'none') renderPedidos();
   if ($('viewRemitos').style.display !== 'none') renderRemitos();
+  if ($('viewFacturas').style.display !== 'none') renderFacturas();
   if ($('viewFlujoCaja').style.display !== 'none') renderFlujoCaja();
   renderHeaderResumen();
 }
@@ -4891,6 +5017,7 @@ $('tabs').addEventListener('click', (e) => {
   $('viewPedidos').style.display = tab === 'pedidos' ? '' : 'none';
   $('viewStock').style.display = tab === 'stock' ? '' : 'none';
   $('viewRemitos').style.display = tab === 'remitos' ? '' : 'none';
+  $('viewFacturas').style.display = tab === 'facturas' ? '' : 'none';
   $('viewFlujoCaja').style.display = tab === 'flujocaja' ? '' : 'none';
   if (tab === 'revision') renderRevision();
   if (tab === 'calendario') renderCalendario();
@@ -4901,6 +5028,7 @@ $('tabs').addEventListener('click', (e) => {
   if (tab === 'pedidos') renderPedidos();
   if (tab === 'stock') renderStock();
   if (tab === 'remitos') renderRemitos();
+  if (tab === 'facturas') renderFacturas();
   if (tab === 'flujocaja') renderFlujoCaja();
 });
 
@@ -5286,7 +5414,9 @@ function construirPayloadBackup() {
     flujo_config: flujoConfig,
     stock_diario: stockDiario,
     remitos: remitos,
-    config_remitos: remitosConfig
+    config_remitos: remitosConfig,
+    facturas: facturas,
+    config_facturas: facturasConfig
   };
 }
 
@@ -5405,6 +5535,8 @@ function importarBackup(file) {
     migrarPedidosPendientes();
     if (Array.isArray(data.remitos)) remitos = data.remitos;
     if (data.config_remitos) remitosConfig = normalizarConfigRemitos(data.config_remitos);
+    if (Array.isArray(data.facturas)) facturas = data.facturas;
+    if (data.config_facturas) facturasConfig = normalizarConfigFacturas(data.config_facturas);
     egresos = listaEgresos;
     egresos.forEach(e => {
       if (e.moneda === undefined) e.moneda = 'ARS';
@@ -5426,6 +5558,8 @@ function importarBackup(file) {
     try { await window.storage.set('stock_diario', JSON.stringify(stockDiario), false); } catch (e) { /* noop */ }
     try { await window.storage.set('remitos', JSON.stringify(remitos), false); } catch (e) { /* noop */ }
     try { await window.storage.set('config_remitos', JSON.stringify(remitosConfig || normalizarConfigRemitos(null)), false); } catch (e) { /* noop */ }
+    try { await window.storage.set('facturas', JSON.stringify(facturas), false); } catch (e) { /* noop */ }
+    try { await window.storage.set('config_facturas', JSON.stringify(facturasConfig || normalizarConfigFacturas(null)), false); } catch (e) { /* noop */ }
     if (data.objetivo_mensual_items != null) {
       try { await window.storage.set('objetivo_mensual_items', String(objetivoMensual), false); } catch (e) { /* noop */ }
     }
@@ -6162,6 +6296,7 @@ function editarRemito(id) {
   if (!r) return;
   if (r.estado === 'anulado') { mostrarAviso('Un remito anulado no se puede editar.', 'error'); return; }
   if (r.factura_id) { mostrarAviso('Este remito ya fue facturado: no se puede editar.', 'error'); return; }
+  if (r.factura_borrador_id) { mostrarAviso('Este remito está en un borrador de factura: rechazá el borrador primero.', 'error'); return; }
   limpiarValidaciones();
   editandoRemitoId = id;
   remOriginal = JSON.parse(JSON.stringify(r));
@@ -6360,7 +6495,8 @@ async function guardarRemito(conPdf) {
 async function anularRemito(id) {
   const r = remitos.find(x => x.id === id);
   if (!r || r.estado === 'anulado') return;
-  if (r.factura_id) { mostrarAviso('Este remito ya fue facturado: anulá primero la factura.', 'error'); return; }
+  if (r.factura_id) { mostrarAviso('Este remito ya fue facturado: no se puede anular (corregilo con una nota de crédito).', 'error'); return; }
+  if (r.factura_borrador_id) { mostrarAviso('Este remito está en un borrador de factura: rechazá el borrador primero.', 'error'); return; }
   const ok = await confirmarAccion(`¿Anular el remito ${formatNumeroRemito(r)}? Las cantidades vuelven al saldo de los pedidos y el número queda usado (no se puede reutilizar).`);
   if (!ok) return;
   let motivo = '';
@@ -6468,7 +6604,7 @@ function remitoCardHTML(r) {
           <span class="cliente">${escapeHtml(r.cliente || '')}</span>
           <span class="factura">N° ${escapeHtml(formatNumeroRemito(r))}</span>
           <span class="badge ${Number(r.cuenta) === 2 ? 'porvencer' : 'pagado'}">Cuenta ${r.cuenta}</span>
-          ${anulado ? '<span class="badge vencido">Anulado</span>' : (r.factura_id ? '<span class="badge pagado">Facturado</span>' : '')}
+          ${anulado ? '<span class="badge vencido">Anulado</span>' : (r.factura_id ? '<span class="badge pagado">Facturado</span>' : (r.factura_borrador_id ? '<span class="badge porvencer">En borrador de factura</span>' : ''))}
         </div>
         <span class="pedido-card-cantidad">${formatCantidad(unidades)} u.</span>
       </div>
@@ -6559,6 +6695,986 @@ $('rem_urgencia').addEventListener('change', () => {
 });
 $('rem_leyenda').addEventListener('change', () => { remLeyendaManual = true; });
 
+
+
+/* ===================== PDF DE FACTURA / NOTA DE CRÉDITO / NOTA DE DÉBITO =====================
+   Se dibuja completo sobre una hoja A4 en blanco (medidas en milímetros desde la esquina superior izquierda).
+   Mientras no haya conexión con ARCA, el comprobante sin CAE sale con marca de agua "BORRADOR". */
+const TIPOS_COMPROBANTE = {
+  FA: {nombre: 'FACTURA', cod: '01', letra: 'A', abrev: 'A', arca: 1},
+  NC: {nombre: 'NOTA DE CRÉDITO', cod: '03', letra: 'A', abrev: 'NC A', arca: 3},
+  ND: {nombre: 'NOTA DE DÉBITO', cod: '02', letra: 'A', abrev: 'ND A', arca: 2}
+};
+
+function fmtMoneda(n) {
+  const v = Math.round((Number(n) || 0) * 100) / 100;
+  const neg = v < 0;
+  const [ent, dec] = Math.abs(v).toFixed(2).split('.');
+  return (neg ? '-' : '') + ent.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + dec;
+}
+
+function numeroALetras(n, apocope) {
+  n = Math.floor(n);
+  if (n === 0) return 'cero';
+  const U = ['', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte', 'veintiuno', 'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
+  const D = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+  const C = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
+  const hasta999 = (x, apoc) => {
+    if (x === 100) return 'cien';
+    let t = '';
+    const c = Math.floor(x / 100), r = x % 100;
+    if (c) t += C[c] + (r ? ' ' : '');
+    if (r < 30) {
+      let u = U[r];
+      if (apoc && r === 1) u = 'un';
+      if (apoc && r === 21) u = 'veintiún';
+      t += u;
+    } else {
+      const d = Math.floor(r / 10), u = r % 10;
+      t += D[d];
+      if (u) t += ' y ' + ((apoc && u === 1) ? 'un' : U[u]);
+    }
+    return t.trim();
+  };
+  const partes = [];
+  const millones = Math.floor(n / 1e6), miles = Math.floor((n % 1e6) / 1000), resto = n % 1000;
+  if (millones) {
+    if (millones === 1) partes.push('un millón');
+    else if (millones >= 1e6) partes.push(numeroALetras(Math.floor(millones / 1e6), true) + ' billones' + (millones % 1e6 ? ' ' + numeroALetras(millones % 1e6, true) + ' millones' : ' de'));
+    else partes.push(hasta999(millones, true) + ' millones');
+  }
+  if (miles) partes.push(miles === 1 ? 'mil' : hasta999(miles, true) + ' mil');
+  if (resto) partes.push(hasta999(resto, apocope));
+  if (n >= 1e6 && !miles && !resto && millones > 1) { /* "dos millones" ya sin "de" porque Son: pesos ... */ }
+  return partes.join(' ').trim();
+}
+
+function montoEnLetras(total) {
+  const t = Math.round((Number(total) || 0) * 100) / 100;
+  const ent = Math.floor(t + 1e-9);
+  const cent = Math.round((t - ent) * 100);
+  let txt = 'Son: pesos ' + numeroALetras(ent, false).toUpperCase();
+  if (cent > 0) txt += ' con ' + String(cent).padStart(2, '0') + ' centavos';
+  return txt;
+}
+
+function urlQrArca(f, cfg) {
+  const t = TIPOS_COMPROBANTE[f.tipo];
+  const dig = (s) => Number(String(s || '').replace(/\D/g, '')) || 0;
+  const datos = {
+    ver: 1, fecha: f.fecha, cuit: dig(cfg.cuit), ptoVta: dig(f.pv), tipoCmp: t.arca, nroCmp: Number(f.numero) || 0,
+    importe: Math.round((Number(f.total) || 0) * 100) / 100, moneda: 'PES', ctz: 1,
+    tipoDocRec: 80, nroDocRec: dig(f.cuit), tipoCodAut: 'E', codAut: dig(f.cae)
+  };
+  return 'https://www.afip.gob.ar/fe/qr/?p=' + btoa(JSON.stringify(datos));
+}
+
+const FACTURA_FILAS_POR_HOJA = 31;
+
+function construirPdfFactura(f, cfg, opciones) {
+  opciones = opciones || {};
+  cfg = cfg || {};
+  const lib = (window.jspdf && window.jspdf.jsPDF) || null;
+  if (!lib) throw new Error('No se pudo cargar la librería de PDF. Revisá la conexión a internet y recargá la página.');
+  const doc = new lib({unit: 'mm', format: 'a4', orientation: 'portrait'});
+  const tipo = TIPOS_COMPROBANTE[f.tipo] || TIPOS_COMPROBANTE.FA;
+  const items = f.items || [];
+  const hojas = Math.max(1, Math.ceil(items.length / FACTURA_FILAS_POR_HOJA));
+  const esBorrador = !f.cae;
+
+  const txt = (t, x, y, o) => { if (t != null && String(t) !== '') doc.text(String(t), x, y, o || {}); };
+  const fit = (t, maxW, size, min) => {
+    let s = size; doc.setFontSize(s);
+    while (s > (min || 6) && doc.getTextWidth(String(t)) > maxW) { s -= 0.5; doc.setFontSize(s); }
+    return s;
+  };
+  const fechaTxt = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
+  const numTxt = f.numero ? `${f.pv} -${String(f.numero).padStart(8, '0')}` : `${f.pv} -________`;
+
+  for (let h = 0; h < hojas; h++) {
+    if (h > 0) doc.addPage();
+    const ultima = h === hojas - 1;
+    doc.setTextColor(0); doc.setDrawColor(0); doc.setLineWidth(0.3);
+
+    // Marco y divisiones
+    doc.rect(10.4, 6.5, 192.4, 286);
+    doc.line(10.4, 53.8, 202.8, 53.8);
+    doc.line(109.5, 19.5, 109.5, 53.8);
+    doc.line(10.4, 76.1, 202.8, 76.1);
+    doc.setFillColor(190, 194, 194);
+    doc.rect(10.4, 81.7, 192.4, 9.3, 'F');
+    doc.line(10.4, 81.7, 202.8, 81.7);
+    doc.line(10.4, 91, 202.8, 91);
+    doc.setFillColor(185, 189, 189);
+    doc.rect(10.4, 219.5, 192.4, 49.5, 'F');
+    doc.line(10.4, 219.5, 202.8, 219.5);
+    doc.line(10.4, 269, 202.8, 269);
+    // Letra
+    doc.setFillColor(255); doc.rect(103, 6.5, 13, 13, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(22); txt(tipo.letra, 109.5, 16.3, {align: 'center'});
+    doc.setFontSize(7); doc.setFont('helvetica', 'normal'); txt('Cod. N° ' + tipo.cod, 108, 22.6, {align: 'right'});
+
+    // Emisor
+    if (cfg.logo) {
+      try { doc.addImage(cfg.logo, cfg.logo.indexOf('image/jpeg') > -1 ? 'JPEG' : 'PNG', 51.5, 8, 23, 18, undefined, 'FAST'); } catch (e) { /* logo inválido: se omite */ }
+    }
+    doc.setFont('helvetica', 'bolditalic'); doc.setFontSize(10);
+    txt(cfg.razon || 'Tacca Hnos. S.A.', 62.9, 29.5, {align: 'center'});
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    [cfg.domicilio1, cfg.domicilio2, cfg.tel, cfg.web].forEach((ln, i) => txt(ln, 62.9, 34 + i * 4.3, {align: 'center'}));
+    doc.setFont('helvetica', 'bold'); txt(cfg.cond_iva || 'I.V.A. RESPONSABLE INSCRIPTO', 62.9, 51.4, {align: 'center'});
+
+    // Datos del comprobante
+    doc.setFontSize(16); txt(tipo.nombre, 162, 14.4 + (tipo.nombre.length > 8 ? 0 : 0), {align: 'center'});
+    doc.setFontSize(12.5); txt('Nº ' + numTxt, 162, 23.6, {align: 'center'});
+    doc.setFontSize(8);
+    const L = [['FECHA:', fechaTxt(f.fecha)], ['C.U.I.T. Nº:', cfg.cuit], ['II.BB. Nº:', cfg.iibb], ['Inicio Actividades:', cfg.inicio]];
+    L.forEach((par, i) => { doc.setFont('helvetica', 'bold'); txt(par[0], 126.3, 35 + i * 5.1); doc.setFont('helvetica', 'normal'); txt(par[1], 154.8, 35 + i * 5.1); });
+    if (hojas > 1) { doc.setFontSize(7); txt(`Hoja ${h + 1} de ${hojas}`, 202.8, 4.6, {align: 'right'}); }
+
+    // Cliente
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+    txt('SEÑOR/ES:', 13.5, 59); txt('I.V.A.:', 13.5, 69.8);
+    doc.setFont('helvetica', 'normal');
+    fit(f.cliente || '', 80, 9, 6.5); txt(f.cliente, 38.5, 59);
+    doc.setFontSize(8.5);
+    const dom = doc.splitTextToSize(String(f.domicilio || ''), 82).slice(0, 2);
+    dom.forEach((ln, i) => txt(ln, 38.5, 63.4 + i * 3.8));
+    txt(f.iva, 38.5, 70.3);
+    if (f.tipo === 'FA') {
+      if (f.remitos_txt) { fit('Remito Nº: ' + f.remitos_txt, 82, 8.5, 6); txt('Remito Nº: ' + f.remitos_txt, 38.5, 74.3); }
+    } else if (f.asociada) {
+      const as = f.asociada;
+      fit(`Comprobante asociado: Factura A ${as.pv}-${String(as.numero).padStart(8, '0')}`, 82, 8.5, 6);
+      txt(`Comprobante asociado: Factura A ${as.pv}-${String(as.numero).padStart(8, '0')}`, 38.5, 74.3);
+    }
+    doc.setFontSize(8.5);
+    txt(f.codigo_cliente, 124.7, 59.4);
+    doc.setFont('helvetica', 'bold'); txt('C.U.I.T.:', 140, 60); txt('Nro. OC:', 140, 68.2);
+    doc.setFont('helvetica', 'normal'); txt(f.cuit, 154.4, 60); txt(f.oc, 154.4, 68.2);
+
+    // Condición de venta
+    doc.setFont('helvetica', 'bold'); txt('COND.VTA.:', 20.2, 81.2 - 0.2); txt('VENCIMIENTO:', 128.7, 81.2);
+    doc.setFont('helvetica', 'normal'); fit(f.cond_venta || '', 85, 8.5, 6); txt(f.cond_venta, 39.9, 81.2);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); txt(fechaTxt(f.vencimiento), 154.2, 81.2);
+
+    // Encabezado de renglones
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+    txt('CANT.', 18.1, 88.2); txt('DESCRIPCIÓN', 29.7, 88.2); txt('P.U.', 157.6, 86.4); txt('TOTAL', 185.4, 86.4);
+
+    // Renglones
+    doc.setFont('helvetica', 'normal');
+    const desde = h * FACTURA_FILAS_POR_HOJA;
+    items.slice(desde, desde + FACTURA_FILAS_POR_HOJA).forEach((it, i) => {
+      const y = 100 + i * 3.75;
+      doc.setFontSize(7.5);
+      txt(formatCantidadRemito(it.cantidad), 28.3, y, {align: 'right'});
+      fit(it.desc || it.producto || '', 108, 7.5, 5.5); txt(it.desc || it.producto, 31.3, y);
+      doc.setFontSize(7.5);
+      txt(fmtMoneda(it.precio), 165.4, y, {align: 'right'});
+      txt(fmtMoneda(Math.round((Number(it.cantidad) || 0) * (Number(it.precio) || 0) * 100) / 100), 198.2, y, {align: 'right'});
+    });
+    if (!ultima) { doc.setFont('helvetica', 'italic'); doc.setFontSize(8); txt('Continúa en la hoja siguiente…', 106, 216, {align: 'center'}); }
+
+    // Pie (solo en la última hoja)
+    if (ultima) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); txt('OBSERVACIONES:', 14.4, 222.6);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+      doc.splitTextToSize(String(f.observaciones || ''), 100).slice(0, 4).forEach((ln, i) => txt(ln, 14.4, 227 + i * 3.6));
+      // QR
+      doc.setFillColor(255); doc.rect(15.5, 239.5, 27, 27, 'F');
+      if (!esBorrador && window.qrcode) {
+        try {
+          const qr = window.qrcode(0, 'M'); qr.addData(urlQrArca(f, cfg)); qr.make();
+          const n = qr.getModuleCount(), cell = 25 / n;
+          doc.setFillColor(0);
+          for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) doc.rect(16.5 + c * cell, 240.5 + r * cell, cell + 0.02, cell + 0.02, 'F');
+        } catch (e) { /* sin QR */ }
+      }
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+      doc.splitTextToSize(montoEnLetras(f.total), 88).slice(0, 3).forEach((ln, i) => txt(ln, 44.8, 245 + i * 3.8));
+      // Totales
+      const pares = [
+        ['NETO:', f.neto], [`DCTO.:  ${String(f.descuento_pct || 0).replace('.', ',')}%`, f.descuento], ['SUBTOTAL:', f.subtotal],
+        ['I.V.A. INSC 21%:', f.iva21], ['I.V.A. INSC 10,5%:', f.iva105]
+      ];
+      doc.setFontSize(8.5);
+      pares.forEach((p, i) => {
+        const y = 224.6 + i * 5.2;
+        doc.setFont('helvetica', 'bold'); txt(p[0], 138.6, y);
+        doc.setFont('helvetica', 'normal'); txt('$', 167.8, y); txt(fmtMoneda(p[1]), 198.2, y, {align: 'right'});
+      });
+      doc.setLineWidth(0.4); doc.line(137.5, 249.7, 198.5, 249.7); doc.setLineWidth(0.3);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); txt('TOTAL:', 148, 255); txt('$', 167.8, 255); txt(fmtMoneda(f.total), 198.2, 255, {align: 'right'});
+      // CAE
+      doc.setFontSize(8.5);
+      txt('C.A.E. Nº:', 44.8, 262); txt('VENCIMIENTO:', 44.8, 266);
+      doc.setFont('helvetica', 'bold'); txt(f.cae || '', 63, 262); txt(fechaTxt(f.cae_vto), 70.7, 266);
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(5.5);
+      txt('Régimen especial de emisión electrónica de comprobantes originales', 98, 262); txt('Resolución General 2485', 98, 265.3);
+      // Transparencia fiscal
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); txt('Régimen de Transparencia Fiscal al Consumidor (Ley 27743)', 124.5, 273);
+      doc.setFont('helvetica', 'normal');
+      txt('IVA Contenido:', 124.5, 277.4); txt('$', 172, 277.4); txt(fmtMoneda((Number(f.iva21) || 0) + (Number(f.iva105) || 0)), 193.6, 277.4, {align: 'right'});
+      txt('Otros Imp. Nacionales Indirectos:', 124.5, 281.7); txt('$', 172, 281.7); txt('0,00', 193.6, 281.7, {align: 'right'});
+      txt('Impuestos Internos:', 124.5, 286); txt('$', 172, 286); txt('0,00', 193.6, 286, {align: 'right'});
+      doc.setFont('helvetica', 'bold'); txt('Sólo se informan Impuestos Nacionales', 124.5, 290.4);
+    }
+
+    if (esBorrador) {
+      doc.setTextColor(215); doc.setFont('helvetica', 'bold'); doc.setFontSize(64);
+      doc.text('BORRADOR', 105, 165, {align: 'center', angle: 35});
+      doc.setFontSize(14); doc.text('SIN CAE · SIN VALIDEZ FISCAL', 105, 183, {align: 'center', angle: 35});
+      doc.setTextColor(0);
+    }
+  }
+  return doc;
+}
+
+// ===================== FACTURAS A, NOTAS DE CRÉDITO Y DÉBITO =====================
+// Estructura lista para conectar con ARCA: hasta entonces el N° y el CAE se cargan a mano.
+// Una factura emitida genera sola el registro en Ventas (para cobranzas, deudores y flujo de caja).
+
+let facturas = [];
+let facturasConfig = null;
+let editandoFacturaId = null;
+let facItems = [];
+let facRemitosSel = new Set();
+let facEmitiendoId = null;
+let facLogoTemp = undefined;     // undefined = sin cambios, null = quitar, string = nuevo logo
+let filtroFacturas = 'todos';
+let busquedaFacturas = '';
+
+const FACTURAS_CONFIG_DEFECTO = {
+  pv: '0005', razon: 'Tacca Hnos. S.A.', cuit: '30-50375800-4', iibb: '30-50375800-4', inicio: '6/12/1966',
+  domicilio1: 'Cóndor 2047/51 C.A.B.A.', domicilio2: '(C1437MFJ) Ciudad Autónoma de Buenos Aires',
+  tel: 'Tel.: 4918-9950 / 4918-9061', web: 'www.taccahnos.com.ar', cond_iva: 'I.V.A. RESPONSABLE INSCRIPTO',
+  cond_venta: 'Valores a 30 días FF', dias: 30, logo: null
+};
+
+function normalizarConfigFacturas(c) {
+  return Object.assign({}, FACTURAS_CONFIG_DEFECTO, c || {});
+}
+
+async function cargarFacturas() {
+  try {
+    const r = await window.storage.get('facturas', false);
+    facturas = r ? JSON.parse(r.value) : [];
+  } catch (e) { facturas = []; }
+  try {
+    const c = await window.storage.get('config_facturas', false);
+    facturasConfig = normalizarConfigFacturas(c ? JSON.parse(c.value) : null);
+  } catch (e) { facturasConfig = normalizarConfigFacturas(null); }
+  if ($('viewFacturas').style.display !== 'none') renderFacturas();
+}
+
+function r2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
+function formatNumeroFactura(f) {
+  return f.numero ? `${f.pv}-${String(f.numero).padStart(8, '0')}` : 'Sin número (borrador)';
+}
+
+function etiquetaComprobante(f) {
+  return `${TIPOS_COMPROBANTE[f.tipo].abrev} ${f.pv}-${String(f.numero).padStart(8, '0')}`;
+}
+
+function calcularTotalesFactura(items, pct) {
+  pct = Number(pct) || 0;
+  let neto = 0, base21 = 0, base105 = 0;
+  items.forEach(it => {
+    const imp = r2((Number(it.cantidad) || 0) * (Number(it.precio) || 0));
+    neto += imp;
+    if (Number(it.alicuota) === 10.5) base105 += imp; else base21 += imp;
+  });
+  neto = r2(neto);
+  const descuento = r2(neto * pct / 100);
+  const iva21 = r2(r2(base21 * (1 - pct / 100)) * 0.21);
+  const iva105 = r2(r2(base105 * (1 - pct / 100)) * 0.105);
+  const subtotal = r2(neto - descuento);
+  return {neto, descuento, subtotal, iva21, iva105, total: r2(subtotal + iva21 + iva105)};
+}
+
+function clientePorNombre(nombre) {
+  const n = (nombre || '').trim().toLowerCase();
+  return clientes.find(c => (c.nombre || '').trim().toLowerCase() === n) || null;
+}
+
+// ---------- Persistencia (se vuelve a leer lo guardado para no pisar lo que cargó otra persona) ----------
+async function persistirFactura(f) {
+  let remoto = facturas;
+  try {
+    const r = await window.storage.get('facturas', false);
+    if (r) remoto = JSON.parse(r.value);
+  } catch (e) { /* se usa lo que hay en memoria */ }
+  if (f.numero && f.estado === 'emitida') {
+    const dup = remoto.find(x => x.id !== f.id && x.estado === 'emitida' && x.tipo === f.tipo && x.pv === f.pv && Number(x.numero) === Number(f.numero));
+    if (dup) return {error: 'dup', dup};
+  }
+  const i = remoto.findIndex(x => x.id === f.id);
+  if (i >= 0) remoto[i] = f; else remoto.push(f);
+  await window.storage.set('facturas', JSON.stringify(remoto), false);
+  facturas = remoto;
+  return {ok: true};
+}
+
+async function modificarVentasRemotas(mutador) {
+  let remoto = ventas;
+  try {
+    const r = await window.storage.get('ventas', false);
+    if (r) remoto = JSON.parse(r.value);
+  } catch (e) { /* se usa lo que hay en memoria */ }
+  mutador(remoto);
+  await window.storage.set('ventas', JSON.stringify(remoto), false);
+  ventas = remoto;
+}
+
+async function marcarRemitosFactura(ids, cambios) {
+  for (const id of ids) {
+    const r = remitos.find(x => x.id === id);
+    if (!r) continue;
+    await persistirRemito(Object.assign({}, r, cambios, {modificado_ts: Date.now()}));
+  }
+}
+
+// ---------- Resumen superior ----------
+function remitosSinFacturar() {
+  return remitos.filter(r => Number(r.cuenta) === 1 && r.estado !== 'anulado' && !r.factura_id);
+}
+
+function renderAvisosFacturas() {
+  const sinFac = remitosSinFacturar().filter(r => !r.factura_borrador_id);
+  const borr = facturas.filter(f => f.estado === 'borrador').length;
+  const partes = ['Modo manual: el N° y el CAE se cargan a mano hasta conectar con ARCA'];
+  partes.push(`Remitos de cuenta 1 sin facturar: <b>${sinFac.length}</b>`);
+  if (borr) partes.push(`Borradores sin emitir: <b>${borr}</b>`);
+  $('facAvisos').innerHTML = `<div class="rem-aviso ${borr || sinFac.length ? 'ambar' : ''}">${partes.join(' · ')}</div>`;
+}
+
+// ---------- Formulario ----------
+function itemFacturaVacio() { return {desc: '', cantidad: '', precio: '', alicuota: 21, fijo: false, max: null}; }
+
+function tipoFormFactura() { return $('fac_tipo').value; }
+
+function aplicarModoFormFactura() {
+  const tipo = tipoFormFactura();
+  const fa = tipo === 'FA';
+  $('facRemitosField').style.display = fa ? '' : 'none';
+  $('facAsocField').style.display = fa ? 'none' : '';
+  $('btnAgregarItemFactura').style.display = fa ? 'none' : '';
+  $('facCondField').style.display = tipo === 'NC' ? 'none' : '';
+  $('facDiasField').style.display = tipo === 'NC' ? 'none' : '';
+  $('facVencField').style.display = tipo === 'NC' ? 'none' : '';
+  $('facSecDetalle').textContent = fa ? 'Remitos a facturar' : (tipo === 'NC' ? 'Factura que se acredita y renglones a acreditar' : 'Factura asociada y conceptos a debitar (intereses, ajustes)');
+  $('facObsLabel').textContent = fa ? 'Observaciones (se imprimen)' : 'Motivo (se imprime en observaciones)';
+  $('fac_tipo').disabled = !!editandoFacturaId;
+}
+
+function remitosElegiblesFactura() {
+  const c = (($('fac_cliente').value || '').trim()).toLowerCase();
+  if (!c) return [];
+  return remitos.filter(r => Number(r.cuenta) === 1 && r.estado !== 'anulado' && !r.factura_id &&
+    (!r.factura_borrador_id || r.factura_borrador_id === editandoFacturaId) &&
+    (r.cliente || '').trim().toLowerCase() === c);
+}
+
+function renderFacRemitos() {
+  if (tipoFormFactura() !== 'FA') return;
+  if (!($('fac_cliente').value || '').trim()) {
+    $('facRemitosChecklist').innerHTML = '<span style="font-size:13px;color:var(--text-muted);">Elegí el cliente para ver sus remitos de cuenta 1 sin facturar.</span>';
+    return;
+  }
+  const lista = remitosElegiblesFactura().sort((a, b) => Number(a.numero) - Number(b.numero));
+  if (lista.length === 0) {
+    $('facRemitosChecklist').innerHTML = '<span style="font-size:13px;color:var(--text-muted);">Este cliente no tiene remitos de cuenta 1 pendientes de facturar.</span>';
+    return;
+  }
+  $('facRemitosChecklist').innerHTML = `<div class="facturas-checklist">${lista.map(r => {
+    const u = (r.items || []).reduce((s, it) => s + (Number(it.cantidad) || 0), 0);
+    const sinPrecio = (r.items || []).some(it => it.precio == null);
+    return `<label class="factura-check-row"><input type="checkbox" ${facRemitosSel.has(r.id) ? 'checked' : ''} onchange="toggleFacRemito('${r.id}', this.checked)">
+      <span>Remito ${escapeHtml(formatNumeroRemito(r))} — ${formatFecha(r.fecha)} — ${formatCantidad(u)} u.${sinPrecio ? ' <span class="sin-precio">(hay productos sin precio)</span>' : ''}</span></label>`;
+  }).join('')}</div>`;
+}
+
+function reconstruirItemsDesdeRemitos() {
+  const previos = {};
+  facItems.forEach(it => { previos[it.desc] = it; });
+  const mapa = new Map();
+  Array.from(facRemitosSel).forEach(rid => {
+    const r = remitos.find(x => x.id === rid);
+    if (!r) return;
+    (r.items || []).forEach(it => {
+      const clave = it.producto + '|' + (it.precio == null ? '' : it.precio);
+      if (!mapa.has(clave)) mapa.set(clave, {desc: it.producto, cantidad: 0, precio: it.precio == null ? '' : it.precio, alicuota: previos[it.producto] ? previos[it.producto].alicuota : 21, fijo: true, max: null});
+      mapa.get(clave).cantidad += Number(it.cantidad) || 0;
+    });
+  });
+  facItems = Array.from(mapa.values());
+  if (facItems.length === 0) facItems = [itemFacturaVacio()];
+  renderFacItems();
+  completarOcDesdeRemitos();
+}
+
+function completarOcDesdeRemitos() {
+  if ($('fac_oc').dataset.manual === '1') return;
+  const ocs = new Set();
+  Array.from(facRemitosSel).forEach(rid => {
+    const r = remitos.find(x => x.id === rid);
+    (r && r.pedidos_origen || []).forEach(o => { if (o.oc) ocs.add(o.oc); });
+  });
+  $('fac_oc').value = Array.from(ocs).join(', ');
+  if (!$('fac_obs').dataset.manual) $('fac_obs').value = ocs.size ? 'oc ' + Array.from(ocs).join(', ') : '';
+}
+
+function toggleFacRemito(id, marcado) {
+  if (marcado) facRemitosSel.add(id); else facRemitosSel.delete(id);
+  reconstruirItemsDesdeRemitos();
+}
+
+function renderFacItems() {
+  $('facItemsContainer').innerHTML = facItems.map((it, i) => `
+    <div class="item-producto-row">
+      <input type="text" style="flex:3;" placeholder="Descripción" value="${escapeHtml(it.desc || '')}" ${it.fijo ? 'readonly' : ''} oninput="actualizarItemFactura(${i}, 'desc', this.value)" ${it.fijo ? '' : 'list="listaProductos"'}>
+      <input type="number" placeholder="Cant." min="0" step="0.01" ${it.max != null ? `max="${it.max}"` : ''} value="${it.cantidad != null ? it.cantidad : ''}" ${it.fijo ? 'readonly' : ''} oninput="actualizarItemFactura(${i}, 'cantidad', this.value)">
+      <input type="number" placeholder="Precio" min="0" step="0.01" value="${it.precio != null ? it.precio : ''}" oninput="actualizarItemFactura(${i}, 'precio', this.value)">
+      <select style="width:72px;" onchange="actualizarItemFactura(${i}, 'alicuota', this.value)"><option value="21" ${Number(it.alicuota) !== 10.5 ? 'selected' : ''}>21%</option><option value="10.5" ${Number(it.alicuota) === 10.5 ? 'selected' : ''}>10,5%</option></select>
+      <span class="ped-sub" style="width:96px;" id="fac_imp_${i}"></span>
+      ${(!it.fijo && facItems.length > 1) ? `<button type="button" class="item-producto-del" onclick="eliminarItemFactura(${i})" title="Quitar">✕</button>` : '<span style="width:30px;"></span>'}
+    </div>`).join('');
+  actualizarTotalesFormFactura();
+}
+
+function actualizarItemFactura(i, campo, valor) {
+  if (!facItems[i]) return;
+  facItems[i][campo] = campo === 'alicuota' ? Number(valor) : valor;
+  actualizarTotalesFormFactura();
+}
+
+function eliminarItemFactura(i) {
+  facItems.splice(i, 1);
+  if (facItems.length === 0) facItems.push(itemFacturaVacio());
+  renderFacItems();
+}
+
+function itemsFacturaValidos() {
+  return facItems.filter(it => (it.desc || '').trim() || numPed(it.cantidad) || numPed(it.precio));
+}
+
+function actualizarTotalesFormFactura() {
+  facItems.forEach((it, i) => {
+    const el = $('fac_imp_' + i);
+    const c = numPed(it.cantidad), p = numPed(it.precio);
+    if (el) el.textContent = (c != null && p != null) ? fmtMoneda(c * p) : '';
+  });
+  const t = calcularTotalesFactura(itemsFacturaValidos().map(it => ({cantidad: numPed(it.cantidad), precio: numPed(it.precio), alicuota: it.alicuota})), $('fac_dcto').value);
+  $('facTotales').innerHTML = `Neto <b>${fmtMoneda(t.neto)}</b>${t.descuento ? ` · Dcto <b>-${fmtMoneda(t.descuento)}</b>` : ''} · IVA 21% <b>${fmtMoneda(t.iva21)}</b>${t.iva105 ? ` · IVA 10,5% <b>${fmtMoneda(t.iva105)}</b>` : ''} · <span style="font-size:16px;">TOTAL <b>${fmtMoneda(t.total)}</b></span>`;
+}
+
+function sumarDias(iso, dias) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+  if (!m) return '';
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + (Number(dias) || 0)));
+  return d.toISOString().slice(0, 10);
+}
+
+function recalcularVencimientoForm() {
+  $('fac_venc').value = sumarDias($('fac_fecha').value, $('fac_dias').value);
+}
+
+function completarClienteFactura() {
+  const c = clientePorNombre($('fac_cliente').value);
+  if (!c) return;
+  $('fac_domicilio').value = c.domicilio || '';
+  $('fac_cuit').value = c.cuit || '';
+  $('fac_iva').value = c.condicion_iva || '';
+  $('fac_codigo').value = c.codigo || '';
+  if (tipoFormFactura() !== 'NC') {
+    const cond = c.condicion_habitual === 'Contado' ? 'Contado' : (facturasConfig.cond_venta || '');
+    $('fac_cond').value = cond;
+    $('fac_dias').value = c.condicion_habitual === 'Contado' ? 0 : (facturasConfig.dias != null ? facturasConfig.dias : 30);
+    recalcularVencimientoForm();
+  }
+}
+
+function facturasAsociablesCliente() {
+  const c = (($('fac_cliente').value || '').trim()).toLowerCase();
+  return facturas.filter(f => f.tipo === 'FA' && f.estado === 'emitida' && (f.cliente || '').trim().toLowerCase() === c);
+}
+
+function acreditadoDeFactura(facturaId, excluirId) {
+  return r2(facturas.filter(x => x.tipo === 'NC' && x.estado !== 'rechazada' && x.id !== excluirId && x.asociada && x.asociada.factura_id === facturaId)
+    .reduce((s, x) => s + (Number(x.total) || 0), 0));
+}
+
+function renderFacAsociadas(seleccionId) {
+  const lista = facturasAsociablesCliente();
+  $('fac_asoc').innerHTML = '<option value="">Elegí la factura…</option>' + lista.map(f =>
+    `<option value="${f.id}" ${f.id === seleccionId ? 'selected' : ''}>Factura A ${escapeHtml(formatNumeroFactura(f))} — ${formatFecha(f.fecha)} — ${fmtMoneda(f.total)}</option>`).join('');
+  actualizarInfoAsociada();
+}
+
+function actualizarInfoAsociada() {
+  const f = facturas.find(x => x.id === $('fac_asoc').value);
+  if (!f) { $('facAsocInfo').textContent = lista0(); return; }
+  const ya = acreditadoDeFactura(f.id, editandoFacturaId);
+  $('facAsocInfo').textContent = `Total de la factura ${fmtMoneda(f.total)} · ya acreditado ${fmtMoneda(ya)} · disponible para acreditar ${fmtMoneda(f.total - ya)}`;
+}
+function lista0() { return facturasAsociablesCliente().length ? '' : 'Este cliente no tiene facturas emitidas para asociar.'; }
+
+function cambioFacturaAsociada() {
+  const f = facturas.find(x => x.id === $('fac_asoc').value);
+  actualizarInfoAsociada();
+  if (!f) return;
+  if (tipoFormFactura() === 'NC') {
+    facItems = (f.items || []).map(it => ({desc: it.desc, cantidad: it.cantidad, precio: it.precio, alicuota: it.alicuota, fijo: false, max: it.cantidad}));
+    $('fac_dcto').value = f.descuento_pct || '';
+  } else {
+    facItems = [{desc: 'Intereses por mora', cantidad: 1, precio: '', alicuota: 21, fijo: false, max: null}];
+  }
+  renderFacItems();
+}
+
+function abrirFormularioFactura(tipo, facturaAsociadaId) {
+  editandoFacturaId = null;
+  facRemitosSel = new Set();
+  limpiarValidaciones();
+  $('fac_tipo').value = tipo || 'FA';
+  $('facturaFormTitulo').textContent = tipo === 'NC' ? 'Nueva nota de crédito' : (tipo === 'ND' ? 'Nueva nota de débito' : 'Nueva factura');
+  $('fac_fecha').value = toISODate(new Date());
+  ['fac_cliente', 'fac_cuit', 'fac_domicilio', 'fac_iva', 'fac_codigo', 'fac_oc', 'fac_obs', 'fac_dcto'].forEach(id => { $(id).value = ''; });
+  $('fac_oc').dataset.manual = ''; $('fac_obs').dataset.manual = '';
+  $('fac_cond').value = facturasConfig.cond_venta || '';
+  $('fac_dias').value = facturasConfig.dias != null ? facturasConfig.dias : 30;
+  recalcularVencimientoForm();
+  facItems = [itemFacturaVacio()];
+  aplicarModoFormFactura();
+  $('facAsocInfo').textContent = '';
+  $('fac_asoc').innerHTML = '<option value="">Elegí primero el cliente…</option>';
+  renderFacRemitos();
+  renderFacItems();
+  $('facConfigPanel').classList.remove('open'); $('facEmisionPanel').classList.remove('open');
+  $('facturaPanel').classList.add('open');
+  if (facturaAsociadaId) {
+    const f = facturas.find(x => x.id === facturaAsociadaId);
+    if (f) {
+      $('fac_cliente').value = f.cliente;
+      completarClienteFactura();
+      renderFacAsociadas(f.id);
+      cambioFacturaAsociada();
+      $('facturaPanel').scrollIntoView({behavior: 'smooth'});
+    }
+  }
+}
+
+function cerrarFormularioFactura() {
+  $('facturaPanel').classList.remove('open');
+  editandoFacturaId = null;
+}
+
+function editarFactura(id) {
+  const f = facturas.find(x => x.id === id);
+  if (!f || f.estado !== 'borrador') return;
+  limpiarValidaciones();
+  editandoFacturaId = id;
+  $('fac_tipo').value = f.tipo;
+  $('facturaFormTitulo').textContent = 'Editar borrador';
+  $('fac_fecha').value = f.fecha;
+  $('fac_cliente').value = f.cliente;
+  $('fac_cuit').value = f.cuit || ''; $('fac_domicilio').value = f.domicilio || ''; $('fac_iva').value = f.iva || ''; $('fac_codigo').value = f.codigo_cliente || '';
+  $('fac_oc').value = f.oc || ''; $('fac_oc').dataset.manual = '1';
+  $('fac_obs').value = f.observaciones || ''; $('fac_obs').dataset.manual = '1';
+  $('fac_dcto').value = f.descuento_pct || '';
+  $('fac_cond').value = f.cond_venta || '';
+  $('fac_venc').value = f.vencimiento || '';
+  $('fac_dias').value = f.dias_venc != null ? f.dias_venc : '';
+  facRemitosSel = new Set(f.remito_ids || []);
+  facItems = (f.items || []).map(it => ({desc: it.desc, cantidad: it.cantidad, precio: it.precio, alicuota: it.alicuota, fijo: f.tipo === 'FA', max: f.tipo === 'NC' ? (it.max_cant != null ? it.max_cant : null) : null}));
+  aplicarModoFormFactura();
+  if (f.tipo === 'FA') renderFacRemitos(); else renderFacAsociadas(f.asociada && f.asociada.factura_id);
+  renderFacItems();
+  $('facConfigPanel').classList.remove('open'); $('facEmisionPanel').classList.remove('open');
+  $('facturaPanel').classList.add('open');
+  $('facturaPanel').scrollIntoView({behavior: 'smooth'});
+}
+
+async function guardarFactura(conPdf) {
+  const tipo = tipoFormFactura();
+  const fecha = $('fac_fecha').value;
+  const cliente = ($('fac_cliente').value || '').trim();
+  if (!fecha || !cliente) { mostrarAviso('Completá la fecha y el cliente.', 'error'); return; }
+  if (!($('fac_cuit').value || '').trim()) { mostrarAviso('Falta el CUIT del cliente (una factura A lo requiere). Cargalo en la ficha del cliente.', 'error'); return; }
+
+  const crudos = itemsFacturaValidos();
+  const items = [];
+  let error = null;
+  crudos.forEach(it => {
+    const desc = (it.desc || '').trim(), c = numPed(it.cantidad), p = numPed(it.precio);
+    if (!desc) { error = error || 'Hay un renglón sin descripción.'; return; }
+    if (c === null || c <= 0) { error = error || 'Revisá la cantidad de "' + desc + '".'; return; }
+    if (p === null || p <= 0) { error = error || 'Falta el precio de "' + desc + '".'; return; }
+    if (it.max != null && c > Number(it.max) + 0.0001) { error = error || 'No podés acreditar más de lo facturado en "' + desc + '" (máximo ' + it.max + ').'; return; }
+    items.push({desc, cantidad: c, precio: p, alicuota: Number(it.alicuota) === 10.5 ? 10.5 : 21, max_cant: it.max != null ? Number(it.max) : null});
+  });
+  if (error) { mostrarAviso(error, 'error'); return; }
+  if (items.length === 0) { mostrarAviso('Cargá al menos un renglón.', 'error'); return; }
+  if (items.length > 62) { mostrarAviso('Hay demasiados renglones para un comprobante. Dividilo en dos.', 'error'); return; }
+
+  const pct = parseFloat($('fac_dcto').value) || 0;
+  if (pct < 0 || pct > 100) { mostrarAviso('El descuento tiene que estar entre 0 y 100.', 'error'); return; }
+  const tot = calcularTotalesFactura(items, pct);
+  if (tot.total <= 0) { mostrarAviso('El total tiene que ser mayor a cero.', 'error'); return; }
+
+  let asociada = null, remitoIds = [];
+  if (tipo === 'FA') {
+    remitoIds = Array.from(facRemitosSel);
+    if (remitoIds.length === 0) { mostrarAviso('Elegí al menos un remito de cuenta 1 para facturar.', 'error'); return; }
+  } else {
+    const fa = facturas.find(x => x.id === $('fac_asoc').value);
+    if (!fa) { mostrarAviso('Elegí la factura asociada.', 'error'); return; }
+    asociada = {factura_id: fa.id, pv: fa.pv, numero: fa.numero, fecha: fa.fecha, venta_id: fa.venta_id};
+    if (tipo === 'NC') {
+      const disp = r2(fa.total - acreditadoDeFactura(fa.id, editandoFacturaId));
+      if (tot.total > disp + 0.01) { mostrarAviso('La nota de crédito (' + fmtMoneda(tot.total) + ') supera lo que queda por acreditar de la factura (' + fmtMoneda(disp) + ').', 'error'); return; }
+    }
+  }
+  const dias = parseInt($('fac_dias').value, 10);
+  let venc = tipo === 'NC' ? null : $('fac_venc').value;
+  if (tipo !== 'NC' && !venc) { mostrarAviso('Completá el vencimiento.', 'error'); return; }
+  if (venc && venc < fecha) { mostrarAviso('El vencimiento no puede ser anterior a la fecha del comprobante.', 'error'); return; }
+
+  const previa = editandoFacturaId ? facturas.find(x => x.id === editandoFacturaId) : null;
+  const cfg = facturasConfig || normalizarConfigFacturas(null);
+  const remitosTxt = remitoIds.map(id => remitos.find(r => r.id === id)).filter(Boolean)
+    .sort((a, b) => Number(a.numero) - Number(b.numero)).map(r => `${parseInt(r.pv, 10) || r.pv}-${r.numero}`).join(', ');
+  const f = {
+    id: previa ? previa.id : 'fac_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+    tipo, estado: 'borrador', pv: cfg.pv, numero: null, fecha,
+    cliente, cuit: ($('fac_cuit').value || '').trim(), domicilio: ($('fac_domicilio').value || '').trim(),
+    iva: ($('fac_iva').value || '').trim(), codigo_cliente: ($('fac_codigo').value || '').trim(),
+    oc: ($('fac_oc').value || '').trim(), observaciones: ($('fac_obs').value || '').trim(),
+    cond_venta: tipo === 'NC' ? '' : ($('fac_cond').value || '').trim(), dias_venc: isNaN(dias) ? null : dias, vencimiento: venc,
+    items, descuento_pct: pct, neto: tot.neto, descuento: tot.descuento, subtotal: tot.subtotal, iva21: tot.iva21, iva105: tot.iva105, total: tot.total,
+    remito_ids: remitoIds, remitos_txt: remitosTxt, asociada,
+    cae: null, cae_vto: null, venta_id: null,
+    creado_por: previa ? previa.creado_por : ((window.currentUser && window.currentUser.email) || ''),
+    creado_ts: previa ? previa.creado_ts : Date.now(), modificado_ts: Date.now()
+  };
+
+  try { await persistirFactura(f); }
+  catch (e) { mostrarAviso('No se pudo guardar el borrador. Probá de nuevo.', 'error'); return; }
+  // Reserva de remitos: los que quedaron afuera se liberan y los elegidos se marcan como "en borrador"
+  const anteriores = previa ? (previa.remito_ids || []) : [];
+  await marcarRemitosFactura(anteriores.filter(id => remitoIds.indexOf(id) === -1), {factura_borrador_id: null});
+  await marcarRemitosFactura(remitoIds, {factura_borrador_id: f.id});
+  cerrarFormularioFactura();
+  refreshTodasLasVistas();
+  mostrarAviso('Borrador guardado.', null, true);
+  if (conPdf) descargarPdfFactura(f.id);
+}
+
+// ---------- Emisión (carga manual de N° y CAE) ----------
+function abrirEmision(id) {
+  const f = facturas.find(x => x.id === id);
+  if (!f || f.estado !== 'borrador') return;
+  facEmitiendoId = id;
+  $('facEmisionTitulo').textContent = 'Datos de emisión — ' + TIPOS_COMPROBANTE[f.tipo].nombre.toLowerCase() + ' de ' + f.cliente;
+  const ult = facturas.filter(x => x.tipo === f.tipo && x.pv === f.pv && x.estado === 'emitida').map(x => Number(x.numero));
+  $('em_numero').value = '';
+  $('em_numero_info').textContent = ult.length ? `Último cargado en el sistema: ${Math.max.apply(null, ult)}` : `Punto de venta ${f.pv}`;
+  $('em_fecha').value = f.fecha;
+  $('em_cae').value = '';
+  $('em_cae_vto').value = '';
+  $('em_venc').value = f.vencimiento || '';
+  $('emVencField').style.display = f.tipo === 'NC' ? 'none' : '';
+  $('facturaPanel').classList.remove('open'); $('facConfigPanel').classList.remove('open');
+  $('facEmisionPanel').classList.add('open');
+  $('facEmisionPanel').scrollIntoView({behavior: 'smooth'});
+}
+
+function cerrarEmision() { $('facEmisionPanel').classList.remove('open'); facEmitiendoId = null; }
+
+function aplicarNotaCreditoEnVenta(lista, f) {
+  const v = lista.find(x => x.id === f.asociada.venta_id);
+  if (!v) return {sinVenta: true};
+  if (v.monto_original == null) v.monto_original = Number(v.monto);
+  v.monto = r2(Number(v.monto) - Number(f.total));
+  if (!v.notas_credito) v.notas_credito = [];
+  v.notas_credito.push({factura_id: f.id, comprobante: etiquetaComprobante(f), monto: f.total, fecha: f.fecha});
+  const pagado = montoPagado(v);
+  let excedente = 0;
+  if (pagado >= v.monto - 0.01) {
+    if (v.estado !== 'pagado') { v.estado = 'pagado'; v.fecha_pago = f.fecha; }
+    excedente = r2(pagado - v.monto);
+  } else if (pagado > 0 && v.estado !== 'pagado') {
+    v.estado = 'parcial';
+  }
+  return {excedente, cliente: v.cliente};
+}
+
+async function emitirFactura() {
+  const f0 = facturas.find(x => x.id === facEmitiendoId);
+  if (!f0) return;
+  const numero = parseInt($('em_numero').value, 10);
+  const cae = ($('em_cae').value || '').trim();
+  const caeVto = $('em_cae_vto').value;
+  const fecha = $('em_fecha').value;
+  if (!numero || numero < 1) { mostrarAviso('Ingresá el N° de comprobante.', 'error'); return; }
+  if (!/^\d{14}$/.test(cae)) { mostrarAviso('El CAE tiene que tener 14 dígitos.', 'error'); return; }
+  if (!caeVto || !fecha) { mostrarAviso('Completá la fecha y el vencimiento del CAE.', 'error'); return; }
+  if (caeVto < fecha) { mostrarAviso('El CAE no puede vencer antes de la fecha del comprobante.', 'error'); return; }
+  let venc = f0.tipo === 'NC' ? null : $('em_venc').value;
+  if (f0.tipo !== 'NC' && (!venc || venc < fecha)) { mostrarAviso('Revisá el vencimiento de pago.', 'error'); return; }
+  if (f0.tipo === 'NC') {
+    const fa = facturas.find(x => x.id === f0.asociada.factura_id);
+    const disp = fa ? r2(fa.total - acreditadoDeFactura(fa.id, f0.id)) : 0;
+    if (f0.total > disp + 0.01) { mostrarAviso('La nota de crédito supera lo que queda por acreditar de la factura.', 'error'); return; }
+  }
+
+  const f = Object.assign({}, f0, {
+    estado: 'emitida', numero, fecha, cae, cae_vto: caeVto, vencimiento: venc,
+    emitida_por: (window.currentUser && window.currentUser.email) || '', emitida_ts: Date.now(), modificado_ts: Date.now()
+  });
+  if (f.tipo === 'FA' || f.tipo === 'ND') f.venta_id = 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  else f.venta_id = f0.asociada.venta_id;
+
+  let res;
+  try { res = await persistirFactura(f); }
+  catch (e) { mostrarAviso('No se pudo guardar. Probá de nuevo.', 'error'); return; }
+  if (res.error === 'dup') { mostrarAviso('Ya hay un comprobante emitido con el N° ' + numero + ' en el punto de venta ' + f.pv + '.', 'error'); return; }
+
+  const cli = clientePorNombre(f.cliente);
+  let excedente = 0, clienteNC = f.cliente, sinVenta = false;
+  try {
+    await modificarVentasRemotas((lista) => {
+      if (f.tipo === 'NC') {
+        const r = aplicarNotaCreditoEnVenta(lista, f);
+        if (r.sinVenta) sinVenta = true; else { excedente = r.excedente; clienteNC = r.cliente || f.cliente; }
+      } else {
+        lista.push({
+          id: f.venta_id, cliente: f.cliente, factura: etiquetaComprobante(f), monto: f.total,
+          fecha_venta: f.fecha, fecha_vencimiento: f.vencimiento,
+          productos: f.items.map(it => ({producto: it.desc, cantidad: it.cantidad})),
+          condicion: /contado/i.test(f.cond_venta || '') ? 'Contado' : 'Cuenta corriente',
+          metodo: (cli && cli.metodo_habitual) || 'Transferencia',
+          notas: f.observaciones || '', estado: 'pendiente', fecha_pago: null, pagos: [], gestiones: [],
+          pedidos_vinculados: [], pedidos_origen: [], sin_pedido_urgencia: false,
+          factura_id: f.id, comprobante: f.tipo
+        });
+      }
+    });
+  } catch (e) { mostrarAviso('El comprobante quedó emitido pero no se pudo actualizar Ventas. Avisale al administrador.', 'error'); }
+  if (excedente > 0.01) await ajustarSaldoFavor(clienteNC, excedente, 'Nota de crédito sobre factura ya cobrada', f.fecha);
+  if (f.tipo === 'FA') await marcarRemitosFactura(f.remito_ids || [], {factura_id: f.id, factura_borrador_id: null});
+  cerrarEmision();
+  refreshTodasLasVistas();
+  mostrarAviso((sinVenta ? 'Emitida, pero no se encontró la venta original para descontar la nota de crédito. ' : '') + TIPOS_COMPROBANTE[f.tipo].nombre.toLowerCase() + ' ' + formatNumeroFactura(f) + ' registrada.', sinVenta ? 'error' : null, true);
+}
+
+async function rechazarFactura(id) {
+  const f = facturas.find(x => x.id === id);
+  if (!f || f.estado !== 'borrador') return;
+  const ok = await confirmarAccion('¿Rechazar este borrador? Los remitos vuelven a quedar disponibles para facturar.');
+  if (!ok) return;
+  let motivo = '';
+  try { motivo = (window.prompt('Motivo (opcional):', '') || '').trim(); } catch (e) { motivo = ''; }
+  try { await persistirFactura(Object.assign({}, f, {estado: 'rechazada', motivo_rechazo: motivo, modificado_ts: Date.now()})); }
+  catch (e) { mostrarAviso('No se pudo rechazar. Probá de nuevo.', 'error'); return; }
+  await marcarRemitosFactura(f.remito_ids || [], {factura_borrador_id: null});
+  refreshTodasLasVistas();
+}
+
+// ---------- PDF ----------
+function descargarPdfFactura(id) {
+  const f = facturas.find(x => x.id === id);
+  if (!f) return;
+  try {
+    const doc = construirPdfFactura(f, facturasConfig);
+    doc.save((f.cae ? '' : 'BORRADOR_') + TIPOS_COMPROBANTE[f.tipo].abrev.replace(' ', '') + '_' + (f.numero ? f.pv + '-' + String(f.numero).padStart(8, '0') : f.cliente.replace(/[^\w]+/g, '_')) + '.pdf');
+  } catch (e) { mostrarAviso(e.message || 'No se pudo generar el PDF.', 'error'); }
+}
+
+// ---------- Configuración ----------
+function abrirConfigFacturas() {
+  const c = facturasConfig || normalizarConfigFacturas(null);
+  $('fc_razon').value = c.razon || ''; $('fc_cuit').value = c.cuit || ''; $('fc_iibb').value = c.iibb || ''; $('fc_inicio').value = c.inicio || '';
+  $('fc_dom1').value = c.domicilio1 || ''; $('fc_dom2').value = c.domicilio2 || ''; $('fc_tel').value = c.tel || ''; $('fc_web').value = c.web || '';
+  $('fc_condiva').value = c.cond_iva || ''; $('fc_pv').value = c.pv || ''; $('fc_condventa').value = c.cond_venta || ''; $('fc_dias').value = c.dias != null ? c.dias : 30;
+  facLogoTemp = undefined;
+  $('fc_logo_file').value = '';
+  $('fc_logo_estado').textContent = c.logo ? 'Hay un logo cargado. Elegí otro archivo para reemplazarlo.' : 'Todavía no cargaste el logo: el PDF sale sin logo.';
+  $('facturaPanel').classList.remove('open'); $('facEmisionPanel').classList.remove('open');
+  $('facConfigPanel').classList.add('open');
+}
+
+function leerConfigFacturasDelFormulario() {
+  const base = facturasConfig || normalizarConfigFacturas(null);
+  const diasN = parseInt($('fc_dias').value, 10);
+  return normalizarConfigFacturas({
+    pv: $('fc_pv').value.trim() || base.pv, razon: $('fc_razon').value.trim(), cuit: $('fc_cuit').value.trim(), iibb: $('fc_iibb').value.trim(),
+    inicio: $('fc_inicio').value.trim(), domicilio1: $('fc_dom1').value.trim(), domicilio2: $('fc_dom2').value.trim(), tel: $('fc_tel').value.trim(),
+    web: $('fc_web').value.trim(), cond_iva: $('fc_condiva').value.trim(), cond_venta: $('fc_condventa').value.trim(), dias: isNaN(diasN) ? 30 : diasN,
+    logo: facLogoTemp === undefined ? base.logo : facLogoTemp
+  });
+}
+
+async function guardarConfigFacturas() {
+  const cfg = leerConfigFacturasDelFormulario();
+  try { await window.storage.set('config_facturas', JSON.stringify(cfg), false); }
+  catch (e) { mostrarAviso('No se pudo guardar la configuración.', 'error'); return; }
+  facturasConfig = cfg;
+  $('facConfigPanel').classList.remove('open');
+  renderFacturas();
+  mostrarAviso('Datos de facturación guardados.', null, true);
+}
+
+function facturaDePrueba() {
+  const items = [{cantidad: 200, desc: 'PUNT. ACERO C/PESTAÑA 75-7', precio: 2133.65, alicuota: 21}, {cantidad: 700, desc: 'PUNT. ACERO C/PESTAÑA 75-8', precio: 2133.65, alicuota: 21}];
+  const t = calcularTotalesFactura(items, 0);
+  return Object.assign({tipo: 'FA', pv: (facturasConfig && facturasConfig.pv) || '0005', numero: 1, fecha: toISODate(new Date()), cliente: 'CLIENTE DE PRUEBA S.A.',
+    domicilio: 'Av. Siempreviva 742 - Ciudad Autónoma de Buenos Aires (1000)', iva: 'Resp. Inscripto', cuit: '30-12345678-9', codigo_cliente: '1', oc: '1234',
+    remitos_txt: '1-22828', cond_venta: 'Valores a 30 días FF', vencimiento: sumarDias(toISODate(new Date()), 30), items, descuento_pct: 0,
+    observaciones: 'Comprobante de prueba', cae: '12345678901234', cae_vto: sumarDias(toISODate(new Date()), 10)}, t);
+}
+
+// ---------- Listado ----------
+function facturaCardHTML(f) {
+  const tipo = TIPOS_COMPROBANTE[f.tipo];
+  const borrador = f.estado === 'borrador', rech = f.estado === 'rechazada';
+  const venta = f.venta_id ? ventas.find(v => v.id === f.venta_id) : null;
+  let cobro = '';
+  if (f.estado === 'emitida' && venta && f.tipo !== 'NC') {
+    cobro = `<span class="badge ${estadoDe(venta) === 'pagado' ? 'pagado' : (estadoDe(venta) === 'vencido' ? 'vencido' : 'porvencer')}">${escapeHtml(badgeTexto(venta))}</span>`;
+  }
+  const ncs = f.tipo === 'FA' ? facturas.filter(x => x.tipo === 'NC' && x.estado !== 'rechazada' && x.asociada && x.asociada.factura_id === f.id) : [];
+  const asoc = f.asociada ? `Asociada a factura A ${f.asociada.pv}-${String(f.asociada.numero).padStart(8, '0')}` : '';
+  return `
+    <div class="pedido-card" style="${rech ? 'opacity:.6;border-left-color:var(--orange);' : (borrador ? 'border-left-color:var(--amber);' : (f.tipo === 'NC' ? 'border-left-color:var(--blue);' : 'border-left-color:var(--green);'))}">
+      <div class="pedido-card-header">
+        <div class="pedido-card-titulo">
+          <span class="cliente">${escapeHtml(f.cliente)}</span>
+          <span class="factura">${escapeHtml(tipo.nombre.charAt(0) + tipo.nombre.slice(1).toLowerCase())} A · ${escapeHtml(formatNumeroFactura(f))}</span>
+          <span class="badge ${borrador ? 'porvencer' : (rech ? 'vencido' : 'pagado')}">${borrador ? 'Borrador' : (rech ? 'Rechazado' : 'Emitido')}</span>
+          ${cobro}
+        </div>
+        <span class="pedido-card-cantidad">${f.tipo === 'NC' ? '−' : ''}${fmtMoneda(f.total)}</span>
+      </div>
+      <table class="ped-items"><thead><tr><th class="num">Cant.</th><th>Descripción</th><th class="num">P. unit.</th><th class="num">Importe</th></tr></thead>
+        <tbody>${f.items.map(it => `<tr><td class="num">${formatCantidadRemito(it.cantidad)}</td><td>${escapeHtml(it.desc)}</td><td class="num">${fmtMoneda(it.precio)}</td><td class="num">${fmtMoneda(it.cantidad * it.precio)}</td></tr>`).join('')}</tbody></table>
+      <div class="row-dates">
+        <span>Fecha: ${formatFecha(f.fecha)}</span>
+        ${f.vencimiento ? `<span>Vence: ${formatFecha(f.vencimiento)}</span>` : ''}
+        ${f.remitos_txt ? `<span>Remito${f.remitos_txt.indexOf(',') > -1 ? 's' : ''} ${escapeHtml(f.remitos_txt)}</span>` : ''}
+        ${f.oc ? `<span>OC ${escapeHtml(f.oc)}</span>` : ''}
+        ${asoc ? `<span>${escapeHtml(asoc)}</span>` : ''}
+        ${f.cae ? `<span>CAE ${escapeHtml(f.cae)} (vto ${formatFecha(f.cae_vto)})</span>` : ''}
+      </div>
+      ${ncs.length ? `<div class="nota">↩ Notas de crédito: ${ncs.map(n => escapeHtml(formatNumeroFactura(n)) + ' (' + fmtMoneda(n.total) + (n.estado === 'borrador' ? ', borrador' : '') + ')').join(' · ')}</div>` : ''}
+      ${rech && f.motivo_rechazo ? `<div class="nota">⛔ ${escapeHtml(f.motivo_rechazo)}</div>` : ''}
+      <div class="row-actions" style="margin-top:8px;">
+        ${rech ? '' : `<button class="iconbtn" onclick="descargarPdfFactura('${f.id}')">📄 PDF</button>`}
+        ${borrador ? `<button class="iconbtn" onclick="abrirEmision('${f.id}')">Cargar N° y CAE</button>
+          <button class="iconbtn" disabled title="Disponible cuando se conecte el sistema con ARCA">Emitir en ARCA (próximamente)</button>
+          <button class="iconbtn" onclick="editarFactura('${f.id}')">Editar</button>
+          <button class="iconbtn danger" onclick="rechazarFactura('${f.id}')">Rechazar</button>` : ''}
+        ${f.estado === 'emitida' && f.tipo === 'FA' ? `<button class="iconbtn" onclick="abrirFormularioFactura('NC', '${f.id}')">Nota de crédito</button><button class="iconbtn" onclick="abrirFormularioFactura('ND', '${f.id}')">Nota de débito</button>` : ''}
+      </div>
+    </div>`;
+}
+
+function facturasFiltradas() {
+  let lista = facturas.filter(f => {
+    if (filtroFacturas === 'borrador') return f.estado === 'borrador';
+    if (filtroFacturas === 'emitida') return f.estado === 'emitida';
+    if (filtroFacturas === 'notas') return f.tipo !== 'FA' && f.estado !== 'rechazada';
+    if (filtroFacturas === 'rechazada') return f.estado === 'rechazada';
+    return true;
+  });
+  const q = busquedaFacturas.trim().toLowerCase();
+  if (q) {
+    lista = lista.filter(f => (f.cliente || '').toLowerCase().includes(q) || formatNumeroFactura(f).toLowerCase().includes(q) ||
+      String(f.numero || '').includes(q) || (f.oc || '').toLowerCase().includes(q) || (f.remitos_txt || '').toLowerCase().includes(q) ||
+      (f.items || []).some(it => (it.desc || '').toLowerCase().includes(q)));
+  }
+  lista.sort((a, b) => (b.creado_ts || 0) - (a.creado_ts || 0));
+  return lista;
+}
+
+function renderFacturas() {
+  if (!facturasConfig) facturasConfig = normalizarConfigFacturas(null);
+  renderAvisosFacturas();
+  if (facturas.length === 0) {
+    $('contenidoFacturas').innerHTML = `<div class="empty"><h3>Todavía no hay comprobantes</h3><p>Primero revisá los datos de la empresa en “⚙️ Datos de la empresa y PDF”. Después armá una factura a partir de los remitos de cuenta 1.</p><button class="primary" onclick="abrirFormularioFactura('FA')">+ Nueva factura</button></div>`;
+    return;
+  }
+  const lista = facturasFiltradas();
+  $('contenidoFacturas').innerHTML = lista.length ? lista.map(facturaCardHTML).join('') : '<div class="empty"><h3>No hay resultados</h3></div>';
+}
+
+$('btnNuevaFactura').addEventListener('click', () => abrirFormularioFactura('FA'));
+$('btnNuevaNotaCD').addEventListener('click', () => abrirFormularioFactura('NC'));
+$('btnCancelarFactura').addEventListener('click', cerrarFormularioFactura);
+$('btnGuardarFactura').addEventListener('click', () => guardarFactura(false));
+$('btnGuardarFacturaPdf').addEventListener('click', () => guardarFactura(true));
+$('btnAgregarItemFactura').addEventListener('click', () => { facItems.push(itemFacturaVacio()); renderFacItems(); });
+$('btnFacConfig').addEventListener('click', abrirConfigFacturas);
+$('btnFacConfigCancelar').addEventListener('click', () => $('facConfigPanel').classList.remove('open'));
+$('btnFacConfigGuardar').addEventListener('click', guardarConfigFacturas);
+$('btnFacPrueba').addEventListener('click', () => {
+  try { construirPdfFactura(facturaDePrueba(), leerConfigFacturasDelFormulario()).save('Factura_de_prueba.pdf'); }
+  catch (e) { mostrarAviso(e.message || 'No se pudo generar el PDF.', 'error'); }
+});
+$('btnEmisionCancelar').addEventListener('click', cerrarEmision);
+$('btnEmisionGuardar').addEventListener('click', emitirFactura);
+$('buscadorFacturas').addEventListener('input', (e) => { busquedaFacturas = e.target.value; renderFacturas(); });
+$('filtrosFacturas').addEventListener('click', (e) => {
+  if (!e.target.classList.contains('chip')) return;
+  document.querySelectorAll('#filtrosFacturas .chip').forEach(c => c.classList.remove('active'));
+  e.target.classList.add('active');
+  filtroFacturas = e.target.dataset.filter;
+  renderFacturas();
+});
+$('fac_tipo').addEventListener('change', () => {
+  facRemitosSel = new Set();
+  facItems = [itemFacturaVacio()];
+  aplicarModoFormFactura();
+  $('facturaFormTitulo').textContent = tipoFormFactura() === 'NC' ? 'Nueva nota de crédito' : (tipoFormFactura() === 'ND' ? 'Nueva nota de débito' : 'Nueva factura');
+  if (tipoFormFactura() === 'FA') renderFacRemitos(); else renderFacAsociadas(null);
+  renderFacItems();
+});
+$('fac_cliente').addEventListener('change', () => {
+  facRemitosSel = new Set();
+  facItems = [itemFacturaVacio()];
+  completarClienteFactura();
+  if (tipoFormFactura() === 'FA') renderFacRemitos(); else renderFacAsociadas(null);
+  renderFacItems();
+});
+$('fac_asoc').addEventListener('change', cambioFacturaAsociada);
+$('fac_dcto').addEventListener('input', actualizarTotalesFormFactura);
+$('fac_fecha').addEventListener('change', recalcularVencimientoForm);
+$('fac_dias').addEventListener('input', recalcularVencimientoForm);
+$('fac_oc').addEventListener('input', () => { $('fac_oc').dataset.manual = '1'; });
+$('fac_obs').addEventListener('input', () => { $('fac_obs').dataset.manual = '1'; });
+$('fc_logo_file').addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const max = 520, esc = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * esc); cv.height = Math.round(img.height * esc);
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(img, 0, 0, cv.width, cv.height);
+      facLogoTemp = cv.toDataURL('image/jpeg', 0.9);
+      $('fc_logo_estado').textContent = 'Logo listo (' + cv.width + '×' + cv.height + '). Tocá Guardar para aplicarlo.';
+    };
+    img.onerror = () => mostrarAviso('No se pudo leer la imagen.', 'error');
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+});
 
 // ===================== FLUJO DE CAJA =====================
 
@@ -8932,6 +10048,19 @@ function activarSincronizacionEnVivo() {
     try { remitosConfig = normalizarConfigRemitos(JSON.parse(value)); } catch (e) { /* noop */ }
   });
 
+  window.storage.watch('facturas', (value) => {
+    if (value == null) return;
+    try {
+      facturas = JSON.parse(value);
+      if ($('viewFacturas').style.display !== 'none' && !$('facturaPanel').classList.contains('open') && !$('facEmisionPanel').classList.contains('open')) renderFacturas();
+    } catch (e) { /* noop */ }
+  });
+
+  window.storage.watch('config_facturas', (value) => {
+    if (value == null) return;
+    try { facturasConfig = normalizarConfigFacturas(JSON.parse(value)); } catch (e) { /* noop */ }
+  });
+
   window.storage.watch('clientes', (value) => {
     if (value == null) return;
     try {
@@ -9299,6 +10428,7 @@ $('loginForm').addEventListener('submit', async (e) => {
   await cargarFlujoConfig();
   await cargarStock();
   await cargarRemitos();
+  await cargarFacturas();
   renderHeaderResumen();
   activarSincronizacionEnVivo();
   await verificarBackupAutomaticoDiario();
