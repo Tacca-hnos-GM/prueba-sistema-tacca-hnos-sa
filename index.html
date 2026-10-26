@@ -8454,13 +8454,12 @@ function construirPdfProduccion(lista) {
   if (!lib) throw new Error('No se pudo cargar el generador de PDF.');
   const cfg = facturasConfig || normalizarConfigFacturas(null);
   const doc = new lib({unit: 'mm', format: 'a4'});
-  const snap = stockAlDia(toISODate(new Date()));
   let y = 0;
   const cab = () => {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
     doc.text((cfg.razon || '') + ' — ORDEN DE PRODUCCIÓN', 12, 12);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-    doc.text('Emitida el ' + formatFecha(toISODate(new Date())) + (snap ? ' · stock al ' + formatFecha(snap.fecha) : ' · sin stock cargado'), 12, 17);
+    doc.text('Emitida el ' + formatFecha(toISODate(new Date())), 12, 17);
     y = 25;
   };
   cab();
@@ -8477,18 +8476,14 @@ function construirPdfProduccion(lista) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
     if (p.oc) { doc.text('OC: ' + p.oc, 14, y); y += 4.5; }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
-    doc.text('Producto', 14, y); doc.text('Pieza', 112, y); doc.text('Pedido', 138, y, {align: 'right'}); doc.text('Entregado', 158, y, {align: 'right'}); doc.text('A PRODUCIR', 180, y, {align: 'right'}); doc.text('Stock', 197, y, {align: 'right'});
+    doc.text('Producto', 14, y); doc.text('Pedido', 135, y, {align: 'right'}); doc.text('Entregado', 160, y, {align: 'right'}); doc.text('PENDIENTE', 196, y, {align: 'right'});
     y += 4.5; doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
     items.forEach(it => {
       const ini = Number(cantidadInicialItem(it)) || 0, saldo = Number(it.cantidad) || 0;
-      const pr = productos.find(x => (x.nombre || '').trim().toLowerCase() === (it.producto || '').trim().toLowerCase());
-      const st = stockActualProducto(it.producto);
-      doc.text(String(it.producto || '').slice(0, 52), 14, y);
-      doc.text(pr && pr.pieza ? String(pr.pieza) : '', 112, y);
-      doc.text(formatNumStock(ini), 138, y, {align: 'right'});
-      doc.text(formatNumStock(ini - saldo), 158, y, {align: 'right'});
-      doc.setFont('helvetica', 'bold'); doc.text(formatNumStock(saldo), 180, y, {align: 'right'}); doc.setFont('helvetica', 'normal');
-      doc.text(st == null ? '—' : formatNumStock(st), 197, y, {align: 'right'});
+      doc.text(String(it.producto || '').slice(0, 70), 14, y);
+      doc.text(formatNumStock(ini), 135, y, {align: 'right'});
+      doc.text(formatNumStock(ini - saldo), 160, y, {align: 'right'});
+      doc.setFont('helvetica', 'bold'); doc.text(formatNumStock(saldo), 196, y, {align: 'right'}); doc.setFont('helvetica', 'normal');
       y += 5;
     });
     if (p.notas) { doc.setFontSize(8.5); doc.text('Notas: ' + String(p.notas).slice(0, 110), 14, y); y += 5; }
