@@ -1146,6 +1146,11 @@
   .sin-precio{color:var(--orange);font-size:11.5px;}
   .saldo-resumen{display:flex;gap:18px;flex-wrap:wrap;margin:4px 0 12px;font-size:13px;color:var(--text-muted);}
   .saldo-resumen b{color:var(--text);font-family:var(--font-mono);}
+  details.plegable>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;margin-bottom:0;}
+  details.plegable>summary::-webkit-details-marker{display:none;}
+  details.plegable>summary::before{content:'▸';display:inline-block;transition:transform .15s;color:var(--text-muted);}
+  details.plegable[open]>summary::before{transform:rotate(90deg);}
+  details.plegable[open]>summary{margin-bottom:12px;}
   details.saldo-cliente{background:var(--card);border:1px solid var(--hairline);border-left:5px solid var(--amber);border-radius:8px;margin-bottom:10px;}
   details.saldo-cliente>summary{cursor:pointer;padding:11px 14px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;list-style:none;}
   details.saldo-cliente>summary::-webkit-details-marker{display:none;}
@@ -2816,18 +2821,18 @@
       </div>
     </div>
 
-    <div class="chart-card">
-      <div class="chart-title">Ranking de clientes (histórico)</div>
+    <details class="chart-card plegable" id="detRanking">
+      <summary class="chart-title">Ranking de clientes (histórico)</summary>
       <table class="client-table">
         <thead>
           <tr><th>#</th><th>Cliente</th><th>Total histórico vendido</th><th>Facturas</th><th>Última compra</th><th>Debe actualmente</th></tr>
         </thead>
         <tbody id="rankingBody"></tbody>
       </table>
-    </div>
+    </details>
 
-    <div class="chart-card">
-      <div class="chart-title">⚠️ Clientes que más tardan en pagar</div>
+    <details class="chart-card plegable" id="detMorosos">
+      <summary class="chart-title">⚠️ Clientes que más tardan en pagar</summary>
       <p style="font-family:var(--font-body);font-size:12.5px;color:var(--text-muted);margin:-4px 0 12px;">Según el atraso promedio entre la fecha de vencimiento y la fecha en que efectivamente pagaron, más las facturas vencidas que tienen hoy sin cobrar.</p>
       <table class="client-table">
         <thead>
@@ -2835,7 +2840,7 @@
         </thead>
         <tbody id="morososBody"></tbody>
       </table>
-    </div>
+    </details>
 
     <div id="clientesList" style="margin-top:1.25rem;"></div>
   </div>
