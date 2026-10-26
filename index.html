@@ -8465,7 +8465,7 @@ function construirPdfProduccion(lista) {
   cab();
   lista.forEach((p) => {
     const items = (p.productos || []).filter(it => (Number(it.cantidad) || 0) > 0);
-    const alto = 22 + items.length * 5 + (p.notas ? 7 : 0);
+    const alto = 28 + items.length * 5 + (p.notas ? 7 : 0);
     if (y + alto > 285) { doc.addPage(); cab(); }
     doc.setFillColor(225, 225, 225); doc.rect(12, y - 4.5, 186, 7, 'F');
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
@@ -8474,6 +8474,8 @@ function construirPdfProduccion(lista) {
     doc.text('Pedido ' + (p.numero ? 'N° ' + p.numero : '(s/n)') + ' · ' + formatFecha(p.fecha), 196, y, {align: 'right'});
     y += 6;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+    const cliP = clientePorNombre(p.cliente);
+    doc.text('Domicilio: ' + (cliP && cliP.domicilio ? cliP.domicilio : '(sin domicilio cargado en la ficha del cliente)'), 14, y); y += 4.5;
     if (p.oc) { doc.text('OC: ' + p.oc, 14, y); y += 4.5; }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
     doc.text('Producto', 14, y); doc.text('Pedido', 135, y, {align: 'right'}); doc.text('Entregado', 160, y, {align: 'right'}); doc.text('PENDIENTE', 196, y, {align: 'right'});
