@@ -8462,7 +8462,7 @@ function construirPdfProduccion(lista) {
   if (!lib) throw new Error('No se pudo cargar el generador de PDF.');
   const cfg = facturasConfig || normalizarConfigFacturas(null);
   const doc = new lib({unit: 'mm', format: 'a4'});
-  const X0 = 12, W = 186, X1 = X0 + W, XMID = 105, XCOL = 164;
+  const X0 = 12, W = 186, X1 = X0 + W, XMID = 105, XCOL = 164, XCOL1 = 132;
   const fmtCant = (n) => Number(n).toLocaleString('es-AR', {minimumFractionDigits: 1, maximumFractionDigits: 2});
   let y = 12;
 
@@ -8523,18 +8523,20 @@ function construirPdfProduccion(lista) {
     // Tabla
     doc.setFillColor(175, 175, 175); doc.rect(X0, y, W, 6.5, 'FD');
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
-    doc.text('Descripción', (X0 + XCOL) / 2, y + 4.6, {align: 'center'});
-    doc.text(saldo ? 'Cantidad pendiente' : 'Cantidad', (XCOL + X1) / 2, y + 4.6, {align: 'center'});
+    doc.text('Descripción', (X0 + XCOL1) / 2, y + 4.6, {align: 'center'});
+    doc.text('Pedido inicial', (XCOL1 + XCOL) / 2, y + 4.6, {align: 'center'});
+    doc.text('Pendiente', (XCOL + X1) / 2, y + 4.6, {align: 'center'});
     const yT = y; y += 6.5;
     doc.setFontSize(10);
     items.forEach(it => {
       doc.setFont('helvetica', 'normal'); doc.setDrawColor(190); doc.setLineWidth(0.2);
-      doc.text(String(it.producto || '').slice(0, 75), X0 + 3, y + 4.6);
-      doc.text(fmtCant(Number(it.cantidad) || 0), X1 - 4, y + 4.6, {align: 'right'});
+      doc.text(String(it.producto || '').slice(0, 55), X0 + 3, y + 4.6);
+      doc.text(fmtCant(Number(cantidadInicialItem(it)) || 0), XCOL - 4, y + 4.6, {align: 'right'});
+      doc.setFont('helvetica', 'bold'); doc.text(fmtCant(Number(it.cantidad) || 0), X1 - 4, y + 4.6, {align: 'right'}); doc.setFont('helvetica', 'normal');
       y += 6.5; doc.line(X0, y, X1, y);
     });
     doc.setDrawColor(0); doc.setLineWidth(0.5);
-    doc.rect(X0, yT, W, y - yT); doc.line(XCOL, yT, XCOL, y);
+    doc.rect(X0, yT, W, y - yT); doc.line(XCOL1, yT, XCOL1, y); doc.line(XCOL, yT, XCOL, y);
   };
 
   lista.forEach((p, idx) => {
