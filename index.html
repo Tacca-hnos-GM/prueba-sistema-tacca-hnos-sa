@@ -8451,50 +8451,103 @@ function stockActualProducto(nombre) {
   return pr && snap.stock[pr.id] !== undefined ? Number(snap.stock[pr.id]) : null;
 }
 
+function numeroNotaPedido(p) {
+  const n = String(p.numero || '').trim();
+  if (!n) return 'S/N';
+  return /^\d+$/.test(n) ? n.padStart(8, '0') : n;
+}
+
 function construirPdfProduccion(lista) {
   const lib = (window.jspdf && window.jspdf.jsPDF) || null;
   if (!lib) throw new Error('No se pudo cargar el generador de PDF.');
   const cfg = facturasConfig || normalizarConfigFacturas(null);
   const doc = new lib({unit: 'mm', format: 'a4'});
-  let y = 0;
-  const cab = () => {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
-    doc.text((cfg.razon || '') + ' — ORDEN DE PRODUCCIÓN', 12, 12);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-    doc.text('Emitida el ' + formatFecha(toISODate(new Date())), 12, 17);
-    y = 25;
-  };
-  cab();
-  lista.forEach((p) => {
-    const items = (p.productos || []).filter(it => (Number(it.cantidad) || 0) > 0);
-    const alto = 28 + items.length * 5 + (p.notas ? 7 : 0);
-    if (y + alto > 285) { doc.addPage(); cab(); }
-    doc.setFillColor(225, 225, 225); doc.rect(12, y - 4.5, 186, 7, 'F');
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-    doc.text(tipoOrdenProduccion(p), 14, y);
-    doc.text((p.cliente || 'Sin cliente'), 60, y);
-    doc.text('Pedido ' + (p.numero ? 'N° ' + p.numero : '(s/n)') + ' · ' + formatFecha(p.fecha), 196, y, {align: 'right'});
-    y += 6;
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-    const cliP = clientePorNombre(p.cliente);
-    doc.text('Domicilio: ' + (cliP && cliP.domicilio ? cliP.domicilio : '(sin domicilio cargado en la ficha del cliente)'), 14, y); y += 4.5;
-    if (p.oc) { doc.text('OC: ' + p.oc, 14, y); y += 4.5; }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
-    doc.text('Producto', 14, y); doc.text('Pedido', 135, y, {align: 'right'}); doc.text('Entregado', 160, y, {align: 'right'}); doc.text('PENDIENTE', 196, y, {align: 'right'});
-    y += 4.5; doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+  const X0 = 12, W = 186, X1 = X0 + W, XMID = 105, XCOL = 164;
+  const fmtCant = (n) => Number(n).toLocaleString('es-AR', {minimumFractionDigits: 1, maximumFractionDigits: 2});
+  let y = 12;
+
+  const bloque = (p, items) => {
+    const cliP = clientePorNombre(p.cliente) || {};
+    // Cond. Vta. = lo que figure en las notas del pedido (que se completan con las notas del cliente); de ahí se saca el plazo para el Vto.
+    const notaCond = String(p.notas || cliP.notas || '').trim();
+    const mDias = notaCond.match(/(\d+)\s*d[ií]as?/i);
+    const esContado = /contado/i.test(notaCond) || (!notaCond && cliP.condicion_habitual === 'Contado');
+    let dias = esContado ? 0 : (mDias ? Number(mDias[1]) : (cliP.dias_pago != null && cliP.dias_pago !== '' ? Number(cliP.dias_pago) : (cfg.dias != null ? Number(cfg.dias) : 30)));
+    const condVta = notaCond || (esContado ? 'Contado' : (cfg.cond_venta || (dias + ' días')));
+    let vto = '';
+    if (p.fecha) { const d = parseFecha(p.fecha); d.setDate(d.getDate() + (dias || 0)); vto = formatFechaObj(d); }
+    const saldo = !!produccionImpresa[p.id] && produccionImpresa[p.id].firma !== firmaProduccionPedido(p);
+    const reimpresion = !!produccionImpresa[p.id] && produccionImpresa[p.id].firma === firmaProduccionPedido(p);
+
+    doc.setDrawColor(0); doc.setTextColor(0); doc.setLineWidth(0.5);
+    // Cabecera
+    const hH = 34;
+    doc.rect(X0, y, W, hH);
+    doc.line(XMID, y, XMID, y + hH);
+    doc.setFillColor(255, 255, 255); doc.rect(XMID - 6.5, y, 13, 13, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.text('X', XMID, y + 10, {align: 'center'});
+    const cx = (X0 + XMID - 6.5) / 2 + 1;
+    doc.setFontSize(18); doc.text(cfg.razon || 'Tacca Hnos. S.A.', cx, y + 14, {align: 'center'});
+    doc.setFontSize(11); doc.text(cfg.domicilio1 || '', cx, y + 21, {align: 'center'});
+    doc.setFontSize(9.5); doc.text(cfg.tel || '', cx, y + 26.5, {align: 'center'});
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text(cfg.cond_iva || '', cx, y + 31.5, {align: 'center'});
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5);
+    doc.text('NOTA DE PEDIDO N° ' + numeroNotaPedido(p), XMID + 9, y + 9);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    doc.text(['Documento', 'no válido', 'como factura'], XMID + 9, y + 17, {lineHeightFactor: 1.15});
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    doc.text('Fecha:', XMID + 38, y + 27); doc.setFont('helvetica', 'normal'); doc.text(formatFecha(p.fecha), XMID + 50, y + 27);
+    const marca = saldo ? 'SALDO DE PEDIDO' : (reimpresion ? 'REIMPRESIÓN' : '');
+    if (marca) { doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text(marca, X1 - 2, y + 32, {align: 'right'}); }
+    y += hH;
+
+    // Datos del cliente
+    const dom = (cliP.domicilio || '(sin domicilio cargado en la ficha del cliente)');
+    const domL = doc.setFont('helvetica', 'normal') && doc.setFontSize(9) && doc.splitTextToSize(dom, 150).slice(0, 2);
+    const cH = 6 + 5.5 * (3 + domL.length) + (p.oc ? 5.5 : 0) - 1;
+    doc.rect(X0, y, W, cH);
+    let yy = y + 6;
+    const fila = (lab, val, yv, x, xv) => {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text(lab, x, yv);
+      doc.setFont('helvetica', 'normal'); doc.text(String(val || ''), xv, yv);
+    };
+    fila('Empresa:', p.cliente || 'Sin cliente', yy, X0 + 3, X0 + 24); yy += 5.5;
+    fila('Domicilio:', '', yy, X0 + 3, X0 + 24);
+    domL.forEach((l, i) => { doc.setFont('helvetica', 'normal'); doc.text(l, X0 + 24, yy + i * 5); });
+    yy += 5.5 + (domL.length - 1) * 5;
+    fila('I.V.A.:', cliP.condicion_iva || '', yy, X0 + 3, X0 + 24); fila('C.U.I.T.:', cliP.cuit || '', yy, 128, 146); yy += 5.5;
+    fila('Cond. Vta.:', String(condVta).slice(0, 55), yy, X0 + 3, X0 + 24); fila('Vto.:', vto, yy, 128, 146); yy += 5.5;
+    if (p.oc) fila('O.C.:', p.oc, yy, X0 + 3, X0 + 24);
+    y += cH;
+
+    // Tabla
+    doc.setFillColor(175, 175, 175); doc.rect(X0, y, W, 6.5, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    doc.text('Descripción', (X0 + XCOL) / 2, y + 4.6, {align: 'center'});
+    doc.text(saldo ? 'Cantidad pendiente' : 'Cantidad', (XCOL + X1) / 2, y + 4.6, {align: 'center'});
+    const yT = y; y += 6.5;
+    doc.setFontSize(10);
     items.forEach(it => {
-      const ini = Number(cantidadInicialItem(it)) || 0, saldo = Number(it.cantidad) || 0;
-      doc.text(String(it.producto || '').slice(0, 70), 14, y);
-      doc.text(formatNumStock(ini), 135, y, {align: 'right'});
-      doc.text(formatNumStock(ini - saldo), 160, y, {align: 'right'});
-      doc.setFont('helvetica', 'bold'); doc.text(formatNumStock(saldo), 196, y, {align: 'right'}); doc.setFont('helvetica', 'normal');
-      y += 5;
+      doc.setFont('helvetica', 'normal'); doc.setDrawColor(190); doc.setLineWidth(0.2);
+      doc.text(String(it.producto || '').slice(0, 75), X0 + 3, y + 4.6);
+      doc.text(fmtCant(Number(it.cantidad) || 0), X1 - 4, y + 4.6, {align: 'right'});
+      y += 6.5; doc.line(X0, y, X1, y);
     });
-    if (p.notas) { doc.setFontSize(8.5); doc.text('Notas: ' + String(p.notas).slice(0, 110), 14, y); y += 5; }
-    doc.setDrawColor(150); doc.line(12, y, 198, y); y += 9;
+    doc.setDrawColor(0); doc.setLineWidth(0.5);
+    doc.rect(X0, yT, W, y - yT); doc.line(XCOL, yT, XCOL, y);
+  };
+
+  lista.forEach((p, idx) => {
+    const items = (p.productos || []).filter(it => (Number(it.cantidad) || 0) > 0);
+    const alto = 34 + 28 + (p.oc ? 5.5 : 0) + 6.5 + items.length * 6.5 + 12;
+    if (idx > 0 && y + alto > 288) { doc.addPage(); y = 12; }
+    bloque(p, items);
+    if (idx < lista.length - 1) {
+      y += 6; doc.setDrawColor(140); doc.setLineWidth(0.2); doc.setLineDashPattern([2, 2], 0); doc.line(X0, y, X1, y); doc.setLineDashPattern([], 0); y += 7;
+    }
   });
   const n = doc.getNumberOfPages();
-  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(120); doc.text(`Hoja ${i} de ${n}`, 198, 291, {align: 'right'}); doc.setTextColor(0); }
+  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120); doc.text(`Hoja ${i} de ${n}`, 198, 291, {align: 'right'}); doc.setTextColor(0); }
   return doc;
 }
 
