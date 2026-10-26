@@ -19,8 +19,8 @@
   window.PERMISOS_ROLES = {
     admin: {nombre: 'Administrador', tabs: ['ventas','pedidos','remitos','facturas','stock','flujocaja','calendario','deudores','resumenes','cierre','bitacoraventas','clientes','productos','revision'], leer: '*', escribir: '*', backup: true},
     ventas: {nombre: 'Ventas', tabs: ['pedidos','remitos','facturas','stock','cierre','clientes','productos'],
-      leer: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos','facturas','config_facturas','cierres_mensuales'],
-      escribir: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos','facturas','config_facturas','cierres_mensuales']},
+      leer: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos','facturas','config_facturas','cierres_mensuales','produccion_impresa'],
+      escribir: ['pedidos_pendientes','productos','stock_diario','clientes','ventas','papelera','notificaciones','remitos','config_remitos','facturas','config_facturas','cierres_mensuales','produccion_impresa']},
     tesoreria: {nombre: 'Tesorería', tabs: ['ventas','flujocaja','calendario','deudores','resumenes','clientes'],
       leer: ['ventas','clientes','productos','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones','remitos','facturas','config_facturas'],
       escribir: ['ventas','clientes','pedidos_pendientes','egresos','flujo_config','papelera','notificaciones','remitos']}
@@ -2120,6 +2120,7 @@
   </div>
 
   <div id="viewPedidos" style="display:none;">
+    <div id="prodAviso"></div>
     <div class="toolbar">
       <button class="primary" id="btnNuevoPedido">+ Nuevo pedido</button>
       <input type="text" id="buscadorPedidos" placeholder="Buscar por cliente, producto, N° de pedido u OC...">
@@ -4145,6 +4146,7 @@ function pedidoCardHTML(p) {
           ${p.numero ? `<span class="factura">N° ${escapeHtml(p.numero)}</span>` : ''}
           ${p.oc ? `<span class="factura">OC ${escapeHtml(p.oc)}</span>` : ''}
           <span class="badge ${est.clase}">${est.texto}</span>
+          ${pedidoPendienteProduccion(p) ? '<span class="badge porvencer">🖨️ sin bajar a producción</span>' : ''}
         </div>
         <span class="pedido-card-cantidad">Debe: ${formatCantidad(p.facturado ? 0 : saldo)} de ${formatCantidad(cantidadInicialPedido(p))}</span>
       </div>
@@ -4156,6 +4158,7 @@ function pedidoCardHTML(p) {
       ${p.notas ? `<div class="nota">📝 ${escapeHtml(p.notas)}</div>` : ''}
       <div class="row-actions" style="margin-top:8px;">
         ${!p.facturado ? `<button class="iconbtn" onclick="cerrarPedido('${p.id}')">Cerrar pedido</button>` : `<button class="iconbtn" onclick="reabrirPedido('${p.id}')">Reabrir</button>`}
+        ${pedidoTieneSaldo(p) ? `<button class="iconbtn" onclick="imprimirProduccionPedido('${p.id}')">Imprimir 🖨️</button>` : ''}
         <button class="iconbtn" onclick="editarPedido('${p.id}')">Editar</button>
         <button class="iconbtn danger" onclick="eliminarPedido('${p.id}')">Eliminar</button>
       </div>
@@ -4236,6 +4239,7 @@ function renderSaldos() {
 }
 
 function renderPedidos() {
+  renderAvisoProduccion();
   $('toolbarFiltrosPedidos').style.display = modoPedidos === 'lista' ? '' : 'none';
   if (modoPedidos === 'saldos') { renderSaldos(); return; }
   if (pedidosPendientes.length === 0) {
@@ -5480,7 +5484,8 @@ function construirPayloadBackup() {
     config_remitos: remitosConfig,
     facturas: facturas,
     config_facturas: facturasConfig,
-    cierres_mensuales: cierres
+    cierres_mensuales: cierres,
+    produccion_impresa: produccionImpresa
   };
 }
 
@@ -5602,6 +5607,7 @@ function importarBackup(file) {
     if (Array.isArray(data.facturas)) facturas = data.facturas;
     if (data.config_facturas) facturasConfig = normalizarConfigFacturas(data.config_facturas);
     if (data.cierres_mensuales && typeof data.cierres_mensuales === 'object' && !Array.isArray(data.cierres_mensuales)) cierres = data.cierres_mensuales;
+    if (data.produccion_impresa && typeof data.produccion_impresa === 'object' && !Array.isArray(data.produccion_impresa)) produccionImpresa = data.produccion_impresa;
     egresos = listaEgresos;
     egresos.forEach(e => {
       if (e.moneda === undefined) e.moneda = 'ARS';
@@ -5626,6 +5632,7 @@ function importarBackup(file) {
     try { await window.storage.set('facturas', JSON.stringify(facturas), false); } catch (e) { /* noop */ }
     try { await window.storage.set('config_facturas', JSON.stringify(facturasConfig || normalizarConfigFacturas(null)), false); } catch (e) { /* noop */ }
     try { await window.storage.set('cierres_mensuales', JSON.stringify(cierres), false); } catch (e) { /* noop */ }
+    try { await window.storage.set('produccion_impresa', JSON.stringify(produccionImpresa), false); } catch (e) { /* noop */ }
     if (data.objetivo_mensual_items != null) {
       try { await window.storage.set('objetivo_mensual_items', String(objetivoMensual), false); } catch (e) { /* noop */ }
     }
@@ -8391,6 +8398,136 @@ $('btnCiDolar').addEventListener('click', traerDolarAutomatico);
 $('btnCiExcel').addEventListener('click', descargarExcelCierre);
 $('btnCiStockPdf').addEventListener('click', descargarPdfStock);
 
+
+// ===================== ÓRDENES DE PRODUCCIÓN =====================
+// Cada pedido nuevo, y cada saldo que queda después de un remito, se baja a producción en papel.
+// El sistema recuerda qué se imprimió (con la cantidad que tenía) y avisa lo que falta imprimir.
+
+let produccionImpresa = {};   // pedidoId -> {firma, ts, por}
+
+async function cargarProduccionImpresa() {
+  try {
+    const r = await window.storage.get('produccion_impresa', false);
+    produccionImpresa = r ? JSON.parse(r.value) : {};
+  } catch (e) { produccionImpresa = {}; }
+  if ($('viewPedidos').style.display !== 'none') renderPedidos();
+}
+
+function firmaProduccionPedido(p) {
+  return (p.productos || []).filter(it => (Number(it.cantidad) || 0) > 0)
+    .map(it => (it.iid || it.producto) + ':' + (Number(it.cantidad) || 0)).join('|');
+}
+
+function pedidoPendienteProduccion(p) {
+  if (!pedidoTieneSaldo(p)) return false;
+  const m = produccionImpresa[p.id];
+  return !m || m.firma !== firmaProduccionPedido(p);
+}
+
+function pedidosPendientesProduccion() {
+  return pedidosPendientes.filter(pedidoPendienteProduccion)
+    .sort((a, b) => parseFecha(a.fecha) - parseFecha(b.fecha) || String(a.numero || '').localeCompare(String(b.numero || '')));
+}
+
+function tipoOrdenProduccion(p) {
+  const m = produccionImpresa[p.id];
+  if (!m) return 'PEDIDO NUEVO';
+  return 'SALDO DE PEDIDO';
+}
+
+function renderAvisoProduccion() {
+  const n = pedidosPendientesProduccion().length;
+  $('prodAviso').innerHTML = n
+    ? `<div class="rem-aviso ambar" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;"><span><b>${n}</b> pedido${n === 1 ? '' : 's'} / saldo${n === 1 ? '' : 's'} sin bajar a producción.</span><button class="primary" onclick="imprimirProduccionPendientes()">🖨️ Imprimir para producción (${n})</button></div>`
+    : '';
+}
+
+function stockActualProducto(nombre) {
+  const snap = stockAlDia(toISODate(new Date()));
+  if (!snap) return null;
+  const pr = productos.find(x => (x.nombre || '').trim().toLowerCase() === (nombre || '').trim().toLowerCase());
+  return pr && snap.stock[pr.id] !== undefined ? Number(snap.stock[pr.id]) : null;
+}
+
+function construirPdfProduccion(lista) {
+  const lib = (window.jspdf && window.jspdf.jsPDF) || null;
+  if (!lib) throw new Error('No se pudo cargar el generador de PDF.');
+  const cfg = facturasConfig || normalizarConfigFacturas(null);
+  const doc = new lib({unit: 'mm', format: 'a4'});
+  const snap = stockAlDia(toISODate(new Date()));
+  let y = 0;
+  const cab = () => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+    doc.text((cfg.razon || '') + ' — ORDEN DE PRODUCCIÓN', 12, 12);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+    doc.text('Emitida el ' + formatFecha(toISODate(new Date())) + (snap ? ' · stock al ' + formatFecha(snap.fecha) : ' · sin stock cargado'), 12, 17);
+    y = 25;
+  };
+  cab();
+  lista.forEach((p) => {
+    const items = (p.productos || []).filter(it => (Number(it.cantidad) || 0) > 0);
+    const alto = 22 + items.length * 5 + (p.notas ? 7 : 0);
+    if (y + alto > 285) { doc.addPage(); cab(); }
+    doc.setFillColor(225, 225, 225); doc.rect(12, y - 4.5, 186, 7, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    doc.text(tipoOrdenProduccion(p), 14, y);
+    doc.text((p.cliente || 'Sin cliente'), 60, y);
+    doc.text('Pedido ' + (p.numero ? 'N° ' + p.numero : '(s/n)') + ' · ' + formatFecha(p.fecha), 196, y, {align: 'right'});
+    y += 6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+    if (p.oc) { doc.text('OC: ' + p.oc, 14, y); y += 4.5; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+    doc.text('Producto', 14, y); doc.text('Pieza', 112, y); doc.text('Pedido', 138, y, {align: 'right'}); doc.text('Entregado', 158, y, {align: 'right'}); doc.text('A PRODUCIR', 180, y, {align: 'right'}); doc.text('Stock', 197, y, {align: 'right'});
+    y += 4.5; doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    items.forEach(it => {
+      const ini = Number(cantidadInicialItem(it)) || 0, saldo = Number(it.cantidad) || 0;
+      const pr = productos.find(x => (x.nombre || '').trim().toLowerCase() === (it.producto || '').trim().toLowerCase());
+      const st = stockActualProducto(it.producto);
+      doc.text(String(it.producto || '').slice(0, 52), 14, y);
+      doc.text(pr && pr.pieza ? String(pr.pieza) : '', 112, y);
+      doc.text(formatNumStock(ini), 138, y, {align: 'right'});
+      doc.text(formatNumStock(ini - saldo), 158, y, {align: 'right'});
+      doc.setFont('helvetica', 'bold'); doc.text(formatNumStock(saldo), 180, y, {align: 'right'}); doc.setFont('helvetica', 'normal');
+      doc.text(st == null ? '—' : formatNumStock(st), 197, y, {align: 'right'});
+      y += 5;
+    });
+    if (p.notas) { doc.setFontSize(8.5); doc.text('Notas: ' + String(p.notas).slice(0, 110), 14, y); y += 5; }
+    doc.setDrawColor(150); doc.line(12, y, 198, y); y += 9;
+  });
+  const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(120); doc.text(`Hoja ${i} de ${n}`, 198, 291, {align: 'right'}); doc.setTextColor(0); }
+  return doc;
+}
+
+async function marcarProduccionImpresa(lista) {
+  let remoto = produccionImpresa;
+  try { const r = await window.storage.get('produccion_impresa', false); if (r) remoto = JSON.parse(r.value); } catch (e) { /* memoria */ }
+  const por = (window.currentUser && window.currentUser.email) || '';
+  lista.forEach(p => { remoto[p.id] = {firma: firmaProduccionPedido(p), ts: Date.now(), por}; });
+  try { await window.storage.set('produccion_impresa', JSON.stringify(remoto), false); produccionImpresa = remoto; return true; }
+  catch (e) { return false; }
+}
+
+async function imprimirProduccion(lista, nombreArchivo) {
+  if (!lista.length) return;
+  try { construirPdfProduccion(lista).save(nombreArchivo); }
+  catch (e) { mostrarAviso(e.message || 'No se pudo generar el PDF.', 'error'); return; }
+  const ok = await marcarProduccionImpresa(lista);
+  if (!ok) mostrarAviso('Se generó el PDF pero no se pudo registrar como impreso: seguirá figurando pendiente.', 'error');
+  renderPedidos();
+}
+
+function imprimirProduccionPendientes() {
+  return imprimirProduccion(pedidosPendientesProduccion(), 'Produccion_pendientes_' + toISODate(new Date()) + '.pdf');
+}
+
+function imprimirProduccionPedido(id) {
+  const p = pedidosPendientes.find(x => x.id === id);
+  if (!p) return;
+  if (!pedidoTieneSaldo(p)) { mostrarAviso('Este pedido no tiene saldo para producir.', 'error'); return; }
+  return imprimirProduccion([p], 'Produccion_' + (p.numero ? 'pedido_' + p.numero : 'pedido') + '_' + (p.cliente || '').replace(/[^\w]+/g, '_') + '.pdf');
+}
+
 // ===================== FLUJO DE CAJA =====================
 
 let egresos = [];
@@ -10786,6 +10923,11 @@ function activarSincronizacionEnVivo() {
     } catch (e) { /* noop */ }
   });
 
+  window.storage.watch('produccion_impresa', (value) => {
+    if (value == null) return;
+    try { produccionImpresa = JSON.parse(value); if ($('viewPedidos').style.display !== 'none') renderPedidos(); } catch (e) { /* noop */ }
+  });
+
   window.storage.watch('cierres_mensuales', (value) => {
     if (value == null) return;
     try { cierres = JSON.parse(value); if ($('viewCierre').style.display !== 'none') renderCierre(); } catch (e) { /* noop */ }
@@ -11165,6 +11307,7 @@ $('loginForm').addEventListener('submit', async (e) => {
   await cargarRemitos();
   await cargarFacturas();
   await cargarCierres();
+  await cargarProduccionImpresa();
   renderHeaderResumen();
   activarSincronizacionEnVivo();
   await verificarBackupAutomaticoDiario();
